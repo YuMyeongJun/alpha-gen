@@ -1,0 +1,167 @@
+{
+  "last_updated": "2026-05-23 13:19:12",
+  "bought_today": [
+    "005930"
+  ],
+  "bought_today_date": "2026-05-23",
+  "sleep_mode": true,
+  "sleep_reason": "test sleep",
+  "sentiments": {
+    "Elon Musk": {
+      "score": 2,
+      "label": "매우긍정",
+      "keywords": [
+        "Elon",
+        "Musk"
+      ],
+      "reason": "[MOCK] 'Elon Musk' 관련 긍정 뉴스 5건 감지. 핵심 내용: Elon Musk announces major SpaceX milestone, stock market reacts positively",
+      "headlines_used": 5,
+      "headlines": [
+        "Elon Musk announces major SpaceX milestone, stock market reacts positively",
+        "Tesla unveils next-gen FSD v13 – analysts upgrade price targets",
+        "Musk meets with key tech leaders, discusses AI infrastructure investment",
+        "SpaceX Starship completes successful orbital test flight",
+        "Elon Musk's X platform signs major partnership boosting revenue"
+      ],
+      "cached": false,
+      "analyzed_at": "12:31",
+      "topic": "Elon Musk"
+    },
+    "SpaceX": {
+      "score": 2,
+      "label": "매우긍정",
+      "keywords": [
+        "SpaceX"
+      ],
+      "reason": "[MOCK] 'SpaceX' 관련 긍정 뉴스 5건 감지. 핵심 내용: SpaceX secures $2B NASA contract for lunar mission",
+      "headlines_used": 5,
+      "headlines": [
+        "SpaceX secures $2B NASA contract for lunar mission",
+        "Starlink expands to 80 countries, subscriber base hits 5M",
+        "SpaceX Starship launch window confirmed – major aerospace stocks rally",
+        "South Korean satellite launched via SpaceX Falcon 9",
+        "SpaceX partners with Samsung for advanced satellite chips"
+      ],
+      "cached": false,
+      "analyzed_at": "12:31",
+      "topic": "SpaceX"
+    },
+    "Samsung Semiconductor": {
+      "score": 1,
+      "label": "긍정",
+      "keywords": [
+        "Samsung",
+        "Semiconductor"
+      ],
+      "reason": "[MOCK] 'Samsung Semiconductor' 관련 긍정 뉴스 5건 감지. 핵심 내용: Samsung wins record $10B DRAM order from major hyperscaler",
+      "headlines_used": 5,
+      "headlines": [
+        "Samsung wins record $10B DRAM order from major hyperscaler",
+        "Samsung 3nm HBM4 chip outperforms SK Hynix in benchmark tests",
+        "Samsung Electronics Q2 profit beats consensus by 30%",
+        "Samsung Semiconductor expands Texas fab amid AI chip demand surge",
+        "Global memory market recovery accelerates – Samsung main beneficiary"
+      ],
+      "cached": false,
+      "analyzed_at": "12:31",
+      "topic": "Samsung Semiconductor"
+    },
+    "SK Hynix HBM": {
+      "score": 2,
+      "label": "매우긍정",
+      "keywords": [
+        "SK",
+        "Hynix",
+        "HBM"
+      ],
+      "reason": "[MOCK] 'SK Hynix HBM' 관련 긍정 뉴스 5건 감지. 핵심 내용: SK Hynix HBM3E selected exclusively for Nvidia H200 GPU",
+      "headlines_used": 5,
+      "headlines": [
+        "SK Hynix HBM3E selected exclusively for Nvidia H200 GPU",
+        "HBM demand to triple in 2025 – SK Hynix raises guidance",
+        "SK Hynix invests $3.87B in US fab for AI memory chips",
+        "SK Hynix beats Q1 estimates, raises annual outlook on HBM boom",
+        "Analysts raise SK Hynix price target citing AI demand boom"
+      ],
+      "cached": false,
+      "analyzed_at": "12:31",
+      "topic": "SK Hynix HBM"
+    },
+    "HMG AI Hyundai": {
+      "score": 1,
+      "label": "긍정",
+      "keywords": [
+        "HMG",
+        "AI",
+        "Hyundai"
+      ],
+      "reason": "[MOCK] 'HMG AI Hyundai' 관련 긍정 뉴스 5건 감지. 핵심 내용: Hyundai Motor unveils AI-powered autonomous vehicle platform",
+      "headlines_used": 5,
+      "headlines": [
+        "Hyundai Motor unveils AI-powered autonomous vehicle platform",
+        "Hyundai-Boston Dynamics robot goes into mass production",
+        "Hyundai Motor Group posts record-high operating profit on EV growth",
+        "HMG AI software division secures major US defense contract",
+        "Hyundai EVs gain top safety ratings, boosting stock outlook"
+      ],
+      "cached": false,
+      "analyzed_at": "12:31",
+      "topic": "HMG AI Hyundai"
+    },
+    "Tesla stock": {
+      "score": 1,
+      "label": "긍정",
+      "keywords": [
+        "Tesla",
+        "stock"
+      ],
+      "reason": "[MOCK] 'Tesla stock' 관련 긍정 뉴스 5건 감지. 핵심 내용: Tesla Q2 deliveries beat estimates by 15%, shares surge 8%",
+      "headlines_used": 5,
+      "headlines": [
+        "Tesla Q2 deliveries beat estimates by 15%, shares surge 8%",
+        "Tesla Cybertruck production ramps up, margin improving",
+        "Tesla FSD v13 achieves Level 4 autonomy in California",
+        "Morgan Stanley raises Tesla target to $400 on robotaxi potential",
+        "Tesla energy storage business hits record quarterly deployment"
+      ],
+      "cached": false,
+      "analyzed_at": "12:31",
+      "topic": "Tesla stock"
+    },
+    "Nvidia AI chip": {
+      "score": 2,
+      "label": "매우긍정",
+      "keywords": [
+        "Nvidia",
+        "AI",
+        "chip"
+      ],
+      "reason": "[MOCK] 'Nvidia AI chip' 관련 긍정 뉴스 5건 감지. 핵심 내용: Nvidia Blackwell GPU orders surge, backlog extends to 2026",
+      "headlines_used": 5,
+      "headlines": [
+        "Nvidia Blackwell GPU orders surge, backlog extends to 2026",
+        "Nvidia reports 122% revenue growth, smashes estimates",
+        "Nvidia partners with Samsung for next-gen AI memory integration",
+        "AI infrastructure spending boom accelerates Nvidia growth",
+        "Nvidia CEO Jensen Huang hints at next-gen chip at GTC"
+      ],
+      "cached": false,
+      "analyzed_at": "12:31",
+      "topic": "Nvidia AI chip"
+    }
+  },
+  "last_news_fetch": "2026-05-23T12:31:12.234310+09:00",
+  "initial_capital": 10000000,
+  "cash": 10000000,
+  "holdings": {},
+  "prices": {
+    "005930": 75000.0,
+    "000660": 180000.0,
+    "005380": 240000.0,
+    "TSLA": 390000.0,
+    "SPCE": 4000.0,
+    "NVDA": 1500000.0,
+    "PLTR": 105000.0
+  },
+  "trade_log": []
+}

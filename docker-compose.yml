@@ -1,0 +1,25 @@
+services:
+  agent:
+    build: .
+    container_name: alpha-gen-agent
+    restart: unless-stopped
+    volumes:
+      - ./config.py:/app/config.py:ro
+      - ./mock_state.json:/app/mock_state.json
+      - ./logs:/app/logs
+    environment:
+      - TZ=Asia/Seoul
+
+  dashboard:
+    build: .
+    container_name: alpha-gen-dashboard
+    command: streamlit run dashboard.py --server.address=0.0.0.0 --server.port=8501
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./config.py:/app/config.py:ro
+      - ./mock_state.json:/app/mock_state.json
+    environment:
+      - TZ=Asia/Seoul
+    depends_on:
+      - agent

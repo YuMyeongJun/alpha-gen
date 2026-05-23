@@ -1,0 +1,25 @@
+# ─── 보안: API 키 및 인증 파일 ───
+config.py
+*.env
+.env*
+token_cache.json
+
+# ─── Python ───
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+
+# ─── 로그 ───
+logs/
+*.log
+backtest_result.json
+
+# ─── IDE ───
+.vscode/
+.idea/
+*.DS_Store
