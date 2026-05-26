@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Alpha-Gen Web</title>
+    <link rel="stylesheet" href="/frontend/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand-card">
+          <div class="brand-mark">A</div>
+          <div>
+            <p class="eyebrow eyebrow-sidebar">ALPHA-GEN</p>
+            <h1>Alpha-Gen</h1>
+            <p class="subtitle">AI 분석 · 백테스트 · 모의투자를 위한 실전형 운영 콘솔</p>
+          </div>
+        </div>
+
+        <div id="runtime-badges" class="badge-row"></div>
+
+        <div class="sidebar-card">
+          <div class="section-title">
+            <h2>빠른 실행</h2>
+            <span class="section-caption">Agent controls</span>
+          </div>
+          <button id="refresh-analysis">분석 새로고침</button>
+          <button id="run-cycle">에이전트 1회 실행</button>
+          <button id="worker-start">워커 시작</button>
+          <button id="worker-stop" class="secondary">워커 중지</button>
+        </div>
+
+        <div class="sidebar-card">
+          <div class="section-title">
+            <h2>자동화 상태</h2>
+            <span class="section-caption">Worker monitor</span>
+          </div>
+          <div id="worker-monitor" class="worker-monitor"></div>
+        </div>
+
+        <div class="sidebar-card">
+          <div class="section-title">
+            <h2>주문 테스트</h2>
+            <span class="section-caption">Paper trading</span>
+          </div>
+          <form id="order-form">
+            <label>
+              심볼
+              <input name="stock_code" value="005930" />
+            </label>
+            <label>
+              세션
+              <select name="session">
+                <option value="KR">KR</option>
+                <option value="US">US</option>
+              </select>
+            </label>
+            <label>
+              방향
+              <select name="side">
+                <option value="buy">BUY</option>
+                <option value="sell">SELL</option>
+              </select>
+            </label>
+            <label>
+              수량
+              <input name="qty" type="number" min="1" value="1" />
+            </label>
+            <button type="submit">Paper 주문</button>
+          </form>
+        </div>
+      </aside>
+
+      <main class="content">
+        <section class="hero hero-compact">
+          <div class="hero-copy-block">
+            <p class="eyebrow">ALPHA-GEN WEB PRODUCT</p>
+            <h2>운영 현황을 한눈에 보는 트레이딩 콘솔</h2>
+            <p class="hero-copy">
+              포트폴리오, 시그널, 주문, 백테스트를 압축 배치해 스크롤 없이 핵심 흐름을 더 빨리 확인할 수 있게 구성했습니다.
+            </p>
+            <div class="sync-row">
+              <span id="sync-status" class="badge">동기화 대기 중</span>
+              <span id="sync-note" class="sync-note">자동 갱신 준비 중</span>
+            </div>
+            <div id="summary-strip" class="summary-strip"></div>
+          </div>
+          <div class="hero-status">
+            <div class="metric-card">
+              <span>총자산</span>
+              <strong id="metric-total-asset">-</strong>
+            </div>
+            <div class="metric-card">
+              <span>현금</span>
+              <strong id="metric-cash">-</strong>
+            </div>
+            <div class="metric-card">
+              <span>워커</span>
+              <strong id="metric-worker">-</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="grid">
+          <article class="panel panel-portfolio">
+            <div class="panel-header">
+              <h3>포트폴리오</h3>
+              <span id="portfolio-count" class="badge">0</span>
+            </div>
+            <div id="portfolio-overview" class="panel-overview"></div>
+            <div class="chart-grid">
+              <section class="chart-card">
+                <div class="chart-card-header">
+                  <h4>총자산 추이</h4>
+                  <span class="section-caption">Equity</span>
+                </div>
+                <div id="equity-chart" class="chart-surface"></div>
+              </section>
+              <section class="chart-card">
+                <div class="chart-card-header">
+                  <h4>시그널 분포</h4>
+                  <span class="section-caption">Signal mix</span>
+                </div>
+                <div id="signal-chart" class="chart-surface"></div>
+              </section>
+            </div>
+            <div id="portfolio-table" class="table-wrap"></div>
+          </article>
+
+          <article class="panel panel-signals">
+            <div class="panel-header">
+              <h3>전략 시그널</h3>
+              <span class="badge">최근 20건</span>
+            </div>
+            <div id="signals-list" class="list-stack"></div>
+          </article>
+
+          <article class="panel panel-orders">
+            <div class="panel-header">
+              <h3>주문 내역</h3>
+              <span class="badge">최근 주문</span>
+            </div>
+            <div id="orders-list" class="list-stack"></div>
+          </article>
+
+          <article class="panel panel-backtests">
+            <div class="panel-header">
+              <h3>백테스트</h3>
+              <button id="run-backtest" class="small-button">최근 전략 백테스트</button>
+            </div>
+            <div id="backtests-list" class="list-stack"></div>
+          </article>
+
+          <article class="panel panel-wide">
+            <div class="panel-header">
+              <h3>시스템 상태</h3>
+              <span id="system-summary" class="badge">-</span>
+            </div>
+            <div id="system-status"></div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+    <script type="module" src="/frontend/app.js"></script>
+  </body>
+  </html>

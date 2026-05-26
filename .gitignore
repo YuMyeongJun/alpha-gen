@@ -18,6 +18,9 @@ env/
 logs/
 *.log
 backtest_result.json
+data/
+*.sqlite
+*.sqlite3
 
 # ─── IDE ───
 .vscode/

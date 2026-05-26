@@ -7,6 +7,7 @@ Streamlit 대시보드로 포트폴리오·감성 점수·매매 이력을 실�
 
 > ⚠️ **면책**: 본 프로젝트는 교육·실험 목적의 개인 도구입니다. 실제 투자 손실에 대한 책임은 사용자에게 있습니다. 반드시 **Mock → 모의투자 → 실전** 순으로 검증하세요.  
 > 📎 **세션 인수인계**: [CONTEXT.md](./CONTEXT.md) · 개발 요약: [workthrough.md](./workthrough.md)
+> New: **웹 제품 MVP**가 추가되었습니다. `backend/app`은 FastAPI 기반 API/worker/SQLite 상태 저장소를, `frontend`는 웹 대시보드를 제공합니다.
 
 ---
 
@@ -422,6 +423,10 @@ TELEGRAM_CHAT_ID = "여기에_채팅_ID"
 
 ```
 alpha-gen/
+├── config/                # 공통 설정 패키지 (env override 지원)
+├── backend/
+│   └── app/               # FastAPI 백엔드, 서비스 계층, SQLite 저장소
+├── frontend/              # 웹 대시보드 SPA
 ├── config.py              # ⭐ 설정 (Git 제외, 직접 생성)
 ├── config.example.py      # 설정 템플릿 (cp 후 config.py 로 복사)
 ├── main.py                # 메인 에이전트 루프
@@ -445,6 +450,30 @@ alpha-gen/
 └── venv/                  # 가상환경 (Git 제외)
 ```
 
+### 웹 제품 MVP 실행
+
+```bash
+# 의존성 설치
+py -m pip install -r requirements.txt
+
+# 설정 템플릿 복사 후 값 입력
+copy .env.example .env
+
+# 웹 제품 실행
+py -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+
+# 접속
+# http://127.0.0.1:8000
+```
+
+보조 점검 스크립트:
+
+```bash
+py scripts/setup_check.py
+py scripts/kis_smoke_test.py
+py scripts/claude_smoke_test.py
+```
+
 ---
 
 ## 9. 설치 및 실행
@@ -458,7 +487,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-`config.py`가 없으면 `cp config.example.py config.py` 후 API 키를 입력합니다.
+새 웹 제품 경로는 `.env`를 우선 사용합니다. `.env.example`을 복사한 뒤 `KIS_*`, `ACCOUNT_NO`, `ANTHROPIC_API_KEY`를 입력하세요.
 
 ### 9.2 자동매매 엔진
 
