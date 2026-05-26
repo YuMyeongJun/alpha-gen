@@ -45,9 +45,13 @@ def main() -> int:
     batch = news_analyzer.analyze_all_topics()
     print(f"  토픽 수: {len(batch)}")
 
-    print("\n✅ Claude 감성 스모크 테스트 완료")
+    print("\n[OK] Claude 감성 스모크 테스트 완료")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        print(f"\n[FAIL] Claude smoke test failed: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc

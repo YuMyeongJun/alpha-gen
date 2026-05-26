@@ -23,6 +23,7 @@ import risk_manager
 import notifier
 import order_engine
 import agent_logging
+from backend.app.services import build_service_bundle
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -280,167 +281,142 @@ def print_balance(session: str) -> None:
         log(f"  📦 {h['name']}({h['code']}) {h['qty']}주 | 평균:{ap:,} → 현재:{ep:,} | {pnl_pct:+.2f}%", "MONEY")
 
 
+def log_portfolio_snapshot(snapshot: dict) -> None:
+    cash = int(snapshot.get("cash", 0))
+    total = int(snapshot.get("total_asset", 0))
+    drawdown = float(snapshot.get("risk", {}).get("drawdown_pct", 0))
+    log(f"💵 예수금: {cash:,}원 | 총자산: {total:,}원 | 드로우다운: {drawdown:.2f}%", "MONEY")
+    for position in snapshot.get("positions", []):
+        avg_price = float(position.get("avg_price", 0))
+        last_price = float(position.get("last_price", 0))
+        pnl_pct = ((last_price - avg_price) / avg_price * 100) if avg_price else 0
+        log(
+            f"  📦 {position['stock_name']}({position['stock_code']}) {position['qty']}주 | "
+            f"평균:{int(avg_price):,} → 현재:{int(last_price):,} | {pnl_pct:+.2f}%",
+            "MONEY",
+        )
+
+
+def emit_order_notifications(orders: list[dict]) -> None:
+    for order in orders:
+        if order.get("status") not in {"filled", "reconciled"}:
+            continue
+        metadata = order.get("metadata", {}) or {}
+        signal = metadata.get("signal_snapshot", {}) or {}
+        session = order.get("session", "KR")
+        price = int(order.get("executed_price") or order.get("requested_price") or 0)
+        qty = int(order.get("qty", 0))
+        if order.get("side") == "buy":
+            notifier.notify_buy(
+                stock_name=order.get("stock_name", order.get("stock_code", "")),
+                code=order.get("stock_code", ""),
+                price=price,
+                qty=qty,
+                sentiment_score=int(signal.get("sentiment_score", 0)),
+                reason=signal.get("sentiment_reason") or metadata.get("reason") or metadata.get("source", "agent_cycle"),
+                market=session,
+                mock=config.MOCK_MODE,
+            )
+        else:
+            if metadata.get("source") == "stop_loss":
+                notifier.notify_stop_loss(
+                    order.get("stock_name", order.get("stock_code", "")),
+                    order.get("stock_code", ""),
+                    float(metadata.get("loss_pct", 0)),
+                )
+            notifier.notify_sell(
+                stock_name=order.get("stock_name", order.get("stock_code", "")),
+                code=order.get("stock_code", ""),
+                price=price,
+                qty=qty,
+                pnl=int(order.get("realized_pnl") or 0),
+                reason=metadata.get("reason") or metadata.get("source", "sell"),
+                market=session,
+                mock=config.MOCK_MODE,
+            )
+
+
 # ══════════════════════════════════════════════
 # [8] 메인 에이전트 루프
 # ══════════════════════════════════════════════
 
 def run_agent_loop() -> None:
-    """세션에 따라 자동 전환되는 메인 루프"""
-    market_data.load_agent_state()
-    global last_sentiment_results
-    if market_data._shared_sentiments:
-        last_sentiment_results = market_data._shared_sentiments
+    """웹 제어면과 동일한 서비스 코어를 사용하는 CLI 루프"""
+    bundle = build_service_bundle()
+    store = bundle.store
+    trading_service = bundle.trading_service
+    agent_service = bundle.agent_service
+    safety_service = bundle.safety_service
 
     log("=" * 65)
-    log("🚀 alpha-gen 글로벌 테마 자율 에이전트 가동")
-    log(f"   모드: {'🤖 Mock 테스트' if config.MOCK_MODE else '🔴 실전' if config.IS_REAL_TRADING else '🟡 모의'}")
+    log("🚀 alpha-gen Cursor-Native 에이전트 가동")
+    log(f"   운영 단계: {safety_service.get_stage()} | 실거래 허용: {config.ALLOW_LIVE_TRADING}")
     log(f"   국장: {', '.join(v['name'] for v in config.KR_STOCKS.values())}")
     log(f"   미장: {', '.join(v['name'] for v in config.US_STOCKS.values())}")
     log(f"   손절: -{config.STOP_LOSS_PCT*100:.0f}% | 드로우다운 한계: -{config.MAX_DRAWDOWN_PCT*100:.0f}%")
-    if risk_manager.SLEEP_MODE:
-        log(f"   ⚠️ 저장된 휴면 모드 복원: {risk_manager.SLEEP_REASON}", "SLEEP")
     log("=" * 65)
-
-    if config.MOCK_MODE:
-        if risk_manager.INITIAL_CAPITAL == config.TOTAL_CAPITAL:
-            risk_manager.set_initial_capital(config.MOCK_INITIAL_CASH)
-    else:
-        try:
-            cash, holdings = market_data.get_balance("KR")
-            total = cash + sum(h["eval_price"] * h["qty"] for h in holdings)
-            if risk_manager.INITIAL_CAPITAL == config.TOTAL_CAPITAL:
-                risk_manager.set_initial_capital(total)
-            log(f"초기 자본금: {risk_manager.INITIAL_CAPITAL:,}원")
-        except Exception as e:
-            log(f"잔고 초기화 실패: {e} → config.TOTAL_CAPITAL 사용", "WARN")
-            if risk_manager.INITIAL_CAPITAL == config.TOTAL_CAPITAL:
-                risk_manager.set_initial_capital(config.TOTAL_CAPITAL)
 
     notifier.notify_start(
         "Mock 테스트" if config.MOCK_MODE else ("실전투자" if config.IS_REAL_TRADING else "모의투자")
     )
 
-    if should_refresh_news():
-        refresh_news_sentiment()
-    elif last_sentiment_results:
-        log("저장된 감성 분석 결과 사용 (캐시)", "NEWS")
-
-    # 자산 추이 그래프 시작점
-    try:
-        _cash, _holdings = market_data.get_balance("KR")
-        _total = _cash + sum(h["eval_price"] * h["qty"] for h in _holdings)
-        market_data.record_equity_snapshot(_total, session="START", cash=_cash)
-    except Exception:
-        if config.MOCK_MODE:
-            market_data.record_equity_snapshot(
-                config.MOCK_INITIAL_CASH, session="START", cash=config.MOCK_INITIAL_CASH
-            )
-
-    LOOP_INTERVAL = 3 if config.MOCK_MODE else 30
+    loop_interval = 3 if config.MOCK_MODE else max(config.AGENT_INTERVAL_SEC, 15)
+    last_sleep_notified = False
 
     while True:
         now = datetime.now(KST)
         t = now.strftime("%H:%M")
         session = market_data.get_market_session()
 
-        if risk_manager.SLEEP_MODE:
-            log(f"😴 휴면 모드 ({risk_manager.SLEEP_REASON}). 수동 재시작 필요.", "SLEEP")
-            market_data.save_agent_state()
-            time.sleep(60)
+        if safety_service.get_emergency_stop().get("enabled"):
+            reason = safety_service.get_emergency_stop().get("reason") or "긴급 정지"
+            log(f"🛑 긴급 정지 상태: {reason}", "SLEEP")
+            time.sleep(loop_interval)
             continue
+
+        if not bundle.risk_service.can_trade():
+            if not last_sleep_notified:
+                summary = bundle.risk_service.get_summary()
+                notifier.notify_sleep_mode(summary.get("sleep_reason", "sleep_mode"), summary.get("drawdown_pct", 0))
+                last_sleep_notified = True
+            log("😴 휴면 모드. 자동 주문을 건너뜁니다.", "SLEEP")
+            time.sleep(loop_interval)
+            continue
+
+        last_sleep_notified = False
 
         if session == "KR":
             log(f"─── 🇰🇷 한국장 세션 ({t})", "KR")
-            stocks = config.KR_STOCKS
-
-            if should_refresh_news():
-                refresh_news_sentiment()
-
-            if t >= config.KR_SELL_TIME:
-                sell_all_positions("KR", f"한국장 마감({config.KR_SELL_TIME})")
-                market_data.clear_bought_today()
-                market_data.save_agent_state()
-                log("국장 매매 완료. 미장 세션 대기중...", "KR")
-                time.sleep(LOOP_INTERVAL * 2)
+            if config.ENABLE_AUTO_LIQUIDATION and t >= config.KR_SELL_TIME:
+                closed = trading_service.close_positions("KR", f"한국장 마감({config.KR_SELL_TIME})")
+                emit_order_notifications(closed)
+                store.clear_bought_today()
+                log("국장 마감 청산 완료. 미장 세션 대기중...", "KR")
+                time.sleep(loop_interval)
                 continue
-
-            if t >= config.KR_BUY_START:
-                for code, info in stocks.items():
-                    if not risk_manager.SLEEP_MODE:
-                        try_buy(code, info, "KR")
-
-            check_and_execute_stop_loss("KR")
-            check_drawdown("KR")
-            print_balance("KR")
-
+            result = agent_service.run_cycle(session="KR", force_refresh=False, place_orders=True)
         elif session == "US":
             log(f"─── 🇺🇸 미국장 세션 ({t})", "US")
-            stocks = config.US_STOCKS
-
-            if should_refresh_news():
-                refresh_news_sentiment()
-
-            us_close_today = ("04:55" <= t <= "05:05")
-            if us_close_today:
-                sell_all_positions("US", "미국장 마감(05:00 KST)")
-                market_data.clear_bought_today()
-                market_data.save_agent_state()
-                time.sleep(LOOP_INTERVAL * 2)
+            if config.ENABLE_AUTO_LIQUIDATION and "04:55" <= t <= "05:05":
+                closed = trading_service.close_positions("US", "미국장 마감(05:00 KST)")
+                emit_order_notifications(closed)
+                store.clear_bought_today()
+                time.sleep(loop_interval)
                 continue
-
-            for code, info in stocks.items():
-                if not risk_manager.SLEEP_MODE:
-                    try_buy(code, info, "US")
-
-            check_and_execute_stop_loss("US")
-            check_drawdown("US")
-            print_balance("US")
-
+            result = agent_service.run_cycle(session="US", force_refresh=False, place_orders=True)
         else:
             log(f"⏸  장외 시간 ({t}). 다음 세션 대기 중...", "INFO")
-            if config.MOCK_MODE:
-                if getattr(config, "MOCK_CONTINUOUS", False):
-                    log("Mock 연속 모드: 장외 시간 KR 세션 시뮬레이션 (루프 유지)", "AI")
-                    if should_refresh_news():
-                        refresh_news_sentiment()
-                    for code, info in config.KR_STOCKS.items():
-                        try_buy(code, info, "KR")
-                    check_and_execute_stop_loss("KR")
-                    check_drawdown("KR")
-                    print_balance("KR")
-                else:
-                    log("Mock 모드: 장외 시간을 무시하고 KR 세션으로 강제 실행", "AI")
-                    if should_refresh_news():
-                        refresh_news_sentiment()
-                    for code, info in config.KR_STOCKS.items():
-                        try_buy(code, info, "KR")
-                    check_and_execute_stop_loss("KR")
-                    check_drawdown("KR")
-                    print_balance("KR")
+            if config.MOCK_MODE and getattr(config, "MOCK_CONTINUOUS", False):
+                result = agent_service.run_cycle(session="KR", force_refresh=False, place_orders=True)
+            else:
+                time.sleep(loop_interval)
+                continue
 
-                    log("Mock 사이클 완료 → 전량 매도 후 종료", "AI")
-                    sell_all_positions("KR", "Mock 테스트 완료")
-                    market_data.clear_bought_today()
-
-                    total = market_data.get_mock_total_asset()
-                    profit = total - config.MOCK_INITIAL_CASH
-                    log(f"📊 Mock 결과: 초기={config.MOCK_INITIAL_CASH:,} → 최종={total:,} | 손익={profit:+,}원", "AI")
-                    market_data.save_agent_state()
-                    break
-
-        market_data.save_agent_state()
-        time.sleep(LOOP_INTERVAL)
-
-        if config.MOCK_MODE and len(market_data.agent_bought_today) >= len(config.KR_STOCKS):
-            log("Mock: 모든 국장 종목 매수 완료 → 매도 후 종료", "AI")
-            time.sleep(1)
-            sell_all_positions("KR", "Mock 테스트 종료")
-            market_data.clear_bought_today()
-            total = market_data.get_mock_total_asset()
-            profit = total - config.MOCK_INITIAL_CASH
-            log(f"📊 최종 결과: 초기={config.MOCK_INITIAL_CASH:,} → 최종={total:,} | 손익={profit:+,}원", "MONEY")
-            market_data.save_agent_state()
-            break
+        emit_order_notifications(result.get("executed_orders", []))
+        emit_order_notifications(result.get("stop_loss_orders", []))
+        log(result["cycle_summary"]["last_summary"], "INFO")
+        log_portfolio_snapshot(result["portfolio"])
+        time.sleep(loop_interval)
 
 
 if __name__ == "__main__":
@@ -455,9 +431,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.wake:
-        market_data.load_agent_state()
+        bundle = build_service_bundle()
+        bundle.store.set_state("sleep_mode", False)
+        bundle.store.set_state("sleep_reason", "")
         risk_manager.exit_sleep_mode()
-        market_data.save_agent_state()
         log("휴면 모드 해제 완료 (--wake)", "INFO")
 
     try:

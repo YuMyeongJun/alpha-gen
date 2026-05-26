@@ -24,8 +24,13 @@ def _kis_credentials_configured() -> bool:
     return all(f and not any(p in str(f) for p in placeholders) for f in fields)
 
 
-@pytest.mark.skipif(not _kis_credentials_configured(), reason="KIS 모의투자 API 키 미설정 (MOCK_MODE=True 또는 placeholder)")
+def _require_kis_integration() -> None:
+    if not _kis_credentials_configured():
+        pytest.skip("KIS 모의투자 API 키 미설정 (MOCK_MODE=True 또는 placeholder)")
+
+
 def test_kis_oauth_token():
+    _require_kis_integration()
     import market_data
 
     token = market_data._get_kis_token()
@@ -33,8 +38,8 @@ def test_kis_oauth_token():
     assert len(token) > 20
 
 
-@pytest.mark.skipif(not _kis_credentials_configured(), reason="KIS 모의투자 API 키 미설정")
 def test_kis_balance_smoke():
+    _require_kis_integration()
     import market_data
 
     cash, holdings = market_data.kis_get_balance()
@@ -43,8 +48,8 @@ def test_kis_balance_smoke():
     assert isinstance(holdings, list)
 
 
-@pytest.mark.skipif(not _kis_credentials_configured(), reason="KIS 모의투자 API 키 미설정")
 def test_kis_price_and_history_smoke():
+    _require_kis_integration()
     import market_data
 
     code = next(iter(config.KR_STOCKS))

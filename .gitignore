@@ -1,7 +1,10 @@
 # ─── 보안: API 키 및 인증 파일 ───
 config.py
 *.env
-.env*
+.env
+.env.local
+.env.*.local
+!env.example
 token_cache.json
 
 # ─── Python ───

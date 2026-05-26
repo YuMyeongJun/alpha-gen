@@ -1,6 +1,17 @@
 from fastapi.testclient import TestClient
 
+import config
+import market_data
 from backend.app.main import create_app
+
+
+def _reload_config() -> None:
+    import importlib
+
+    importlib.reload(config)
+    from market_adapters import reset_adapters
+
+    reset_adapters()
 
 
 def make_client(tmp_path):
@@ -9,6 +20,16 @@ def make_client(tmp_path):
         bootstrap_legacy=False,
     )
     return TestClient(app)
+
+
+def _configure_paper_kis_env(monkeypatch) -> None:
+    monkeypatch.setenv("MOCK_MODE", "false")
+    monkeypatch.setenv("AUTO_MOCK_ON_MISSING_KIS", "false")
+    monkeypatch.setenv("ALPHA_GEN_STAGE", "paper")
+    monkeypatch.setenv("KIS_APP_KEY", "test-app-key")
+    monkeypatch.setenv("KIS_APP_SECRET", "test-app-secret")
+    monkeypatch.setenv("ACCOUNT_NO", "12345678")
+    _reload_config()
 
 
 def test_health_and_ready_endpoints(tmp_path):
@@ -50,3 +71,111 @@ def test_paper_order_and_backtest_endpoints(tmp_path):
     backtest = client.post("/api/backtests/run", json={"days": 30, "initial_cash": 10000000})
     assert backtest.status_code == 200
     assert backtest.json()["summary"]["trade_count"] >= 0
+
+
+def test_safety_and_audit_endpoints(tmp_path):
+    client = make_client(tmp_path)
+
+    safety = client.get("/api/safety")
+    assert safety.status_code == 200
+    assert "policy" in safety.json()
+
+    stop = client.post(
+        "/api/safety/emergency-stop",
+        json={"enabled": True, "reason": "테스트 정지"},
+    )
+    assert stop.status_code == 200
+    assert stop.json()["emergency_stop"]["enabled"] is True
+
+    blocked = client.post(
+        "/api/orders/paper",
+        json={"stock_code": "005930", "session": "KR", "side": "buy", "qty": 1},
+    )
+    assert blocked.status_code == 200
+    assert blocked.json()["status"] == "rejected"
+
+    audit = client.get("/api/audit")
+    assert audit.status_code == 200
+    assert len(audit.json()["events"]) >= 1
+
+    stage = client.post("/api/safety/stage", json={"stage": "paper"})
+    assert stage.status_code == 400
+
+
+def test_order_transition_endpoint(tmp_path):
+    client = make_client(tmp_path)
+
+    order = client.post(
+        "/api/orders/paper",
+        json={"stock_code": "005930", "session": "KR", "side": "buy", "qty": 1},
+    )
+    order_id = order.json()["id"]
+
+    transitions = client.get(f"/api/orders/{order_id}/transitions")
+    assert transitions.status_code == 200
+    assert len(transitions.json()["transitions"]) >= 2
+
+
+def test_paper_stage_portfolio_syncs_kis_balance(tmp_path, monkeypatch):
+    _configure_paper_kis_env(monkeypatch)
+
+    def fake_get_balance(session: str):
+        assert session == "KR"
+        return 7_500_000, [
+            {
+                "code": "005930",
+                "name": "삼성전자",
+                "qty": 10,
+                "avg_price": 70000,
+                "eval_price": 72000,
+            }
+        ]
+
+    monkeypatch.setattr(market_data, "get_balance", fake_get_balance)
+
+    client = make_client(tmp_path)
+    portfolio = client.get("/api/portfolio")
+
+    assert portfolio.status_code == 200
+    payload = portfolio.json()
+    assert payload["cash"] == 7_500_000
+    assert len(payload["positions"]) == 1
+    assert payload["positions"][0]["stock_code"] == "005930"
+    assert payload["positions"][0]["qty"] == 10
+
+
+def test_mock_mode_portfolio_uses_internal_paper_cash(tmp_path, monkeypatch):
+    _configure_paper_kis_env(monkeypatch)
+    monkeypatch.setenv("MOCK_MODE", "true")
+    _reload_config()
+
+    def fake_get_balance(_session: str):
+        raise AssertionError("mock mode must not call broker balance sync")
+
+    monkeypatch.setattr(market_data, "get_balance", fake_get_balance)
+
+    client = make_client(tmp_path)
+    portfolio = client.get("/api/portfolio")
+
+    assert portfolio.status_code == 200
+    assert portfolio.json()["cash"] == 10_000_000
+
+
+def test_paper_stage_broker_sync_failure_emits_audit(tmp_path, monkeypatch):
+    _configure_paper_kis_env(monkeypatch)
+
+    def failing_get_balance(_session: str):
+        raise RuntimeError("broker unavailable")
+
+    monkeypatch.setattr(market_data, "get_balance", failing_get_balance)
+
+    client = make_client(tmp_path)
+    portfolio = client.get("/api/portfolio")
+
+    assert portfolio.status_code == 200
+    assert portfolio.json()["cash"] == 10_000_000
+
+    audit = client.get("/api/audit")
+    assert audit.status_code == 200
+    events = audit.json()["events"]
+    assert any(event["event_type"] == "position_sync_failed" for event in events)

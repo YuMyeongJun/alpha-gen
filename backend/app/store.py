@@ -110,6 +110,30 @@ class SQLiteStore:
                     created_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS order_state_transitions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id TEXT NOT NULL,
+                    from_status TEXT,
+                    to_status TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS agent_audit_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scope TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    session TEXT,
+                    stock_code TEXT,
+                    order_id TEXT,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS equity_snapshots (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     total_asset REAL NOT NULL,
@@ -141,6 +165,17 @@ class SQLiteStore:
             self.set_state("sleep_mode", False)
         if self.get_state("sleep_reason") is None:
             self.set_state("sleep_reason", "")
+        if self.get_state("promotion_stage") is None:
+            self.set_state("promotion_stage", config.OPERATING_STAGE)
+        if self.get_state("emergency_stop") is None:
+            self.set_json_state(
+                "emergency_stop",
+                {
+                    "enabled": bool(config.EMERGENCY_STOP),
+                    "reason": "config_default" if config.EMERGENCY_STOP else "",
+                    "updated_at": utc_now(),
+                },
+            )
 
     def bootstrap_from_legacy_state(self, legacy_path: str | Path | None = None) -> None:
         legacy_file = Path(legacy_path) if legacy_path else config.PROJECT_ROOT / "mock_state.json"
@@ -317,6 +352,12 @@ class SQLiteStore:
         guard["codes"] = sorted(codes)
         self.set_json_state("daily_trade_guard", guard)
 
+    def clear_bought_today(self) -> None:
+        self.set_json_state(
+            "daily_trade_guard",
+            {"date": datetime.now(UTC).date().isoformat(), "codes": []},
+        )
+
     def list_positions(self, session: str | None = None) -> list[dict[str, Any]]:
         query = "SELECT * FROM paper_positions"
         params: tuple[Any, ...] = ()
@@ -383,6 +424,29 @@ class SQLiteStore:
                 """,
                 (last_price, utc_now(), self.position_key(session, stock_code)),
             )
+            conn.commit()
+
+    def replace_positions(self, session: str, positions: list[dict[str, Any]]) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM paper_positions WHERE session = ?", (session,))
+            for item in positions:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO paper_positions (
+                        position_key, stock_code, stock_name, session, qty, avg_price, last_price, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        self.position_key(session, item["stock_code"]),
+                        item["stock_code"],
+                        item["stock_name"],
+                        session,
+                        int(item["qty"]),
+                        float(item["avg_price"]),
+                        float(item["last_price"]),
+                        utc_now(),
+                    ),
+                )
             conn.commit()
 
     def get_paper_cash(self) -> float:
@@ -498,10 +562,10 @@ class SQLiteStore:
             "qty": qty,
             "requested_price": requested_price,
             "executed_price": None,
-            "status": "pending",
+            "status": "intent",
             "attempt_count": 0,
             "realized_pnl": None,
-            "message": "Order accepted",
+            "message": "Order intent created",
             "metadata": metadata or {},
             "created_at": now,
             "updated_at": now,
@@ -526,7 +590,7 @@ class SQLiteStore:
                     qty,
                     requested_price,
                     None,
-                    "pending",
+                    "intent",
                     0,
                     None,
                     order["message"],
@@ -535,8 +599,108 @@ class SQLiteStore:
                     now,
                 ),
             )
+            conn.execute(
+                """
+                INSERT INTO order_state_transitions (
+                    order_id, from_status, to_status, event_type, message, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    order_id,
+                    None,
+                    "intent",
+                    "intent_created",
+                    order["message"],
+                    json.dumps(order["metadata"], ensure_ascii=False),
+                    now,
+                ),
+            )
             conn.commit()
         return order
+
+    def _decode_order_row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        item = dict(row)
+        item["metadata"] = json.loads(item.pop("metadata_json"))
+        return item
+
+    def get_order(self, order_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM order_events WHERE id = ?",
+                (order_id,),
+            ).fetchone()
+        return self._decode_order_row(row)
+
+    def get_order_by_client_order_id(self, client_order_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM order_events WHERE client_order_id = ?",
+                (client_order_id,),
+            ).fetchone()
+        return self._decode_order_row(row)
+
+    def transition_order(
+        self,
+        order_id: str,
+        *,
+        to_status: str,
+        event_type: str,
+        message: str,
+        attempt_count: int | None = None,
+        executed_price: float | None = None,
+        realized_pnl: float | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        current = self.get_order(order_id)
+        if current is None:
+            raise ValueError(f"unknown order id: {order_id}")
+
+        merged_metadata = {**current.get("metadata", {}), **(metadata or {})}
+        attempts = current["attempt_count"] if attempt_count is None else attempt_count
+        now = utc_now()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE order_events
+                SET status = ?, message = ?, attempt_count = ?, executed_price = ?,
+                    realized_pnl = ?, metadata_json = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    to_status,
+                    message,
+                    attempts,
+                    executed_price,
+                    realized_pnl,
+                    json.dumps(merged_metadata, ensure_ascii=False),
+                    now,
+                    order_id,
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO order_state_transitions (
+                    order_id, from_status, to_status, event_type, message, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    order_id,
+                    current["status"],
+                    to_status,
+                    event_type,
+                    message,
+                    json.dumps(merged_metadata, ensure_ascii=False),
+                    now,
+                ),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM order_events WHERE id = ?",
+                (order_id,),
+            ).fetchone()
+        return self._decode_order_row(row) or {}
 
     def update_order(
         self,
@@ -549,34 +713,16 @@ class SQLiteStore:
         realized_pnl: float | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        now = utc_now()
-        with self._connect() as conn:
-            conn.execute(
-                """
-                UPDATE order_events
-                SET status = ?, message = ?, attempt_count = ?, executed_price = ?,
-                    realized_pnl = ?, metadata_json = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    status,
-                    message,
-                    attempt_count,
-                    executed_price,
-                    realized_pnl,
-                    json.dumps(metadata or {}, ensure_ascii=False),
-                    now,
-                    order_id,
-                ),
-            )
-            conn.commit()
-            row = conn.execute(
-                "SELECT * FROM order_events WHERE id = ?",
-                (order_id,),
-            ).fetchone()
-        item = dict(row)
-        item["metadata"] = json.loads(item.pop("metadata_json"))
-        return item
+        return self.transition_order(
+            order_id,
+            to_status=status,
+            event_type="status_update",
+            message=message,
+            attempt_count=attempt_count,
+            executed_price=executed_price,
+            realized_pnl=realized_pnl,
+            metadata=metadata,
+        )
 
     def add_fill(self, order_id: str, stock_code: str, qty: int, price: float, realized_pnl: float | None) -> None:
         with self._connect() as conn:
@@ -603,10 +749,90 @@ class SQLiteStore:
                 "SELECT * FROM order_events ORDER BY created_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
+        return [self._decode_order_row(row) for row in rows if row is not None]
+
+    def list_order_transitions(self, order_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        query = """
+            SELECT order_id, from_status, to_status, event_type, message, payload_json, created_at
+            FROM order_state_transitions
+        """
+        params: tuple[Any, ...]
+        if order_id:
+            query += " WHERE order_id = ?"
+            params = (order_id, limit)
+            query += " ORDER BY id DESC LIMIT ?"
+        else:
+            params = (limit,)
+            query += " ORDER BY id DESC LIMIT ?"
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
         items = []
         for row in rows:
             item = dict(row)
-            item["metadata"] = json.loads(item.pop("metadata_json"))
+            item["payload"] = json.loads(item.pop("payload_json"))
+            items.append(item)
+        return items
+
+    def add_audit_event(
+        self,
+        *,
+        scope: str,
+        event_type: str,
+        message: str,
+        severity: str = "info",
+        session: str | None = None,
+        stock_code: str | None = None,
+        order_id: str | None = None,
+        payload: dict[str, Any] | list[Any] | None = None,
+    ) -> dict[str, Any]:
+        item = {
+            "scope": scope,
+            "event_type": event_type,
+            "severity": severity,
+            "message": message,
+            "session": session,
+            "stock_code": stock_code,
+            "order_id": order_id,
+            "payload": payload or {},
+            "created_at": utc_now(),
+        }
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO agent_audit_events (
+                    scope, event_type, severity, message, session, stock_code, order_id, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item["scope"],
+                    item["event_type"],
+                    item["severity"],
+                    item["message"],
+                    item["session"],
+                    item["stock_code"],
+                    item["order_id"],
+                    json.dumps(item["payload"], ensure_ascii=False),
+                    item["created_at"],
+                ),
+            )
+            conn.commit()
+        return item
+
+    def list_audit_events(self, limit: int = 50) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT scope, event_type, severity, message, session, stock_code, order_id, payload_json, created_at
+                FROM agent_audit_events
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        items = []
+        for row in rows:
+            item = dict(row)
+            item["payload"] = json.loads(item.pop("payload_json"))
             items.append(item)
         return items
 

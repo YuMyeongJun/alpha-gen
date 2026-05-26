@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "alpha-gen": {
+      "command": "py",
+      "args": ["-m", "automation.mcp_alpha_gen.server"],
+      "env": {
+        "ALPHA_GEN_BASE_URL": "http://127.0.0.1:8000"
+      }
+    }
+  }
+}

@@ -40,29 +40,33 @@ def main() -> int:
         print("  .env 에 KIS_APP_KEY, KIS_APP_SECRET, ACCOUNT_NO 를 입력하면 실제 모의투자 스모크를 실행합니다.")
         return 0
 
-    code = next(iter(config.KR_STOCKS))
-    name = config.KR_STOCKS[code]["name"]
+    try:
+        code = next(iter(config.KR_STOCKS))
+        name = config.KR_STOCKS[code]["name"]
 
-    print("\n[1/4] OAuth 토큰 발급...")
-    token = market_data._get_kis_token()
-    print(f"  OK (len={len(token)})")
+        print("\n[1/4] OAuth 토큰 발급...")
+        token = market_data._get_kis_token()
+        print(f"  OK (len={len(token)})")
 
-    print(f"\n[2/4] 시세 조회 ({name} {code})...")
-    quote = market_data.kis_get_price(code)
-    print(f"  현재가: {quote['current_price']:,}원")
+        print(f"\n[2/4] 시세 조회 ({name} {code})...")
+        quote = market_data.kis_get_price(code)
+        print(f"  현재가: {quote['current_price']:,}원")
 
-    print(f"\n[3/4] 과거 시세 ({code}, 10일)...")
-    hist = market_data.kis_get_price_history(code, days=10)
-    print(f"  {len(hist)}개 캔들 (최근: {hist[-1]:,.0f}원)" if hist else "  데이터 없음")
+        print(f"\n[3/4] 과거 시세 ({code}, 10일)...")
+        hist = market_data.kis_get_price_history(code, days=10)
+        print(f"  {len(hist)}개 캔들 (최근: {hist[-1]:,.0f}원)" if hist else "  데이터 없음")
 
-    print("\n[4/4] 잔고 조회...")
-    cash, holdings = market_data.kis_get_balance()
-    print(f"  예수금: {cash:,}원 | 보유 종목: {len(holdings)}개")
-    for h in holdings[:5]:
-        print(f"    - {h['name']}({h['code']}) {h['qty']}주")
+        print("\n[4/4] 잔고 조회...")
+        cash, holdings = market_data.kis_get_balance()
+        print(f"  예수금: {cash:,}원 | 보유 종목: {len(holdings)}개")
+        for h in holdings[:5]:
+            print(f"    - {h['name']}({h['code']}) {h['qty']}주")
 
-    print("\n✅ KIS 모의투자 E2E 스모크 테스트 완료")
-    return 0
+        print("\n[OK] KIS 모의투자 E2E 스모크 테스트 완료")
+        return 0
+    except Exception as exc:
+        print(f"\n[FAIL] KIS smoke test failed: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

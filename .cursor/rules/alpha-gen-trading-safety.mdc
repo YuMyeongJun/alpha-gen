@@ -1,0 +1,13 @@
+---
+description: Alpha-Gen trading safety and control-plane conventions
+alwaysApply: true
+---
+
+# Alpha-Gen Trading Safety
+
+- Treat `backend/app/services.py` as the primary control plane. New trading logic should flow through `SafetyService`, `TradingService`, and `AgentService` before touching legacy entrypoints.
+- Do not bypass runtime safety gates in `config/__init__.py`. Respect `OPERATING_STAGE`, `EMERGENCY_STOP`, freshness checks, and live-trading limits.
+- Any live-trading change must update three surfaces together: backend state/audit trail, API visibility, and operator-facing UI status.
+- Prefer deterministic policy code for execution decisions. LLM output may propose or summarize, but must not directly override risk or broker guards.
+- When changing trading workflows, add or update focused tests for store transitions, safety behavior, or API responses.
+- Use Cursor automation deliberately: `explore` for code discovery, `ci-investigator` for failing checks, browser tooling for console verification, and Linear MCP for tracking follow-up work.

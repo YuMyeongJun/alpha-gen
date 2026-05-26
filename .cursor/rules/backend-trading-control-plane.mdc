@@ -1,0 +1,32 @@
+---
+description: Backend trading control plane — SafetyService, store, tests must stay in sync
+globs: backend/app/**/*.py
+alwaysApply: false
+---
+
+# Backend Trading Control Plane
+
+`backend/app/**/*.py` 변경 시 아래를 따릅니다.
+
+## 제어면 우선
+
+- 새 매매·안전·워커 로직은 `SafetyService`, `TradingService`, `AgentService`(`services.py`)에 추가합니다.
+- 레거시 `main.py` 진입점을 우회하는 실행 경로를 만들지 않습니다.
+
+## 상태·감사
+
+- 주문·정책·워커 상태 변경은 `store.py`에 영속화하고 audit 이벤트를 남깁니다.
+- 상태 전이가 있으면 `order_state_transitions` 또는 동등 감사 경로를 사용합니다.
+
+## API 노출
+
+- 운영자가 볼 수 있게 `main.py` API를 추가/갱신합니다 (`/api/safety`, `/api/audit`, worker 등).
+
+## 테스트
+
+- store 전이, safety 거부, API 응답에 대한 focused test를 `tests/test_backend_*.py`에 추가합니다.
+- `python -m pytest tests/test_backend_*.py -q` 회귀를 유지합니다.
+
+## Config 게이트
+
+- `config/__init__.py`의 `OPERATING_STAGE`, `EMERGENCY_STOP`, freshness·live 한도를 우회하지 않습니다.

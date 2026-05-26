@@ -423,10 +423,18 @@ TELEGRAM_CHAT_ID = "여기에_채팅_ID"
 
 ```
 alpha-gen/
-├── config/                # 공통 설정 패키지 (env override 지원)
+├── .cursor/
+│   ├── commands/          # ops-check, promote-stage, incident-triage 등
+│   ├── mcp.json           # alpha-gen MCP 서버 등록
+│   ├── rules/             # trading safety + file-scoped rules
+│   └── skills/            # readiness, ops-console, live-gate, incident, ops-loop
+├── automation/
+│   ├── cursor_readiness_agent.py  # cursor-sdk one-shot (optional)
+│   └── mcp_alpha_gen/     # 프로젝트 전용 MCP 서버
 ├── backend/
 │   └── app/               # FastAPI 백엔드, 서비스 계층, SQLite 저장소
-├── frontend/              # 웹 대시보드 SPA
+├── frontend/              # Vite + React + TS 운영 콘솔 (빌드: frontend/dist)
+├── frontend-legacy/       # 이전 vanilla HTML/JS (참고용)
 ├── config.py              # ⭐ 설정 (Git 제외, 직접 생성)
 ├── config.example.py      # 설정 템플릿 (cp 후 config.py 로 복사)
 ├── main.py                # 메인 에이전트 루프
@@ -457,14 +465,28 @@ alpha-gen/
 py -m pip install -r requirements.txt
 
 # 설정 템플릿 복사 후 값 입력
-copy .env.example .env
+copy env.example .env
+# 또는: .\scripts\init_env.ps1
 
-# 웹 제품 실행
+# React 프론트엔드 빌드 (Vite + TypeScript)
+cd frontend
+yarn
+yarn build
+cd ..
+
+# 웹 제품 실행 (FastAPI가 frontend/dist 서빙)
 py -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 
-# 접속
+# 프론트엔드 개발 (API 프록시)
+cd frontend
+yarn dev
+# → http://127.0.0.1:5173 ( /api → 8000 프록시 )
+
+# 접속 (프로덕션 빌드 후)
 # http://127.0.0.1:8000
 ```
+
+프론트엔드 개발 스펙(Vite/React/TS 폴더·패키지·컴포넌트 규칙): [`docs/frontend_development.md`](./docs/frontend_development.md)
 
 보조 점검 스크립트:
 
@@ -472,6 +494,34 @@ py -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 py scripts/setup_check.py
 py scripts/kis_smoke_test.py
 py scripts/claude_smoke_test.py
+py scripts/paper_onboarding_check.py
+copy env.example .env
+```
+
+### Cursor 자동화 (Skills / MCP / Loop)
+
+운영 점검·승격·장애 triage는 Cursor project layer를 사용합니다. 상세: [`docs/cursor_automation_workflow.md`](./docs/cursor_automation_workflow.md).
+
+| 작업 | 진입점 |
+|------|--------|
+| Readiness | Command `ops-check` 또는 skill `alpha-gen-readiness` |
+| Stage 승격 | Command `promote-stage` + [`docs/operating_stages.md`](./docs/operating_stages.md) |
+| 장애 triage | Command `incident-triage` |
+| 주기 감시 | `/loop 5m` 또는 `scripts/cursor_ops_watch.ps1` |
+| MCP tools | `.cursor/mcp.json` → `py -m automation.mcp_alpha_gen.server` |
+
+로컬 MCP 검증 (FastAPI 실행 중):
+
+```bash
+py -m pip install -r requirements.txt
+py -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+# Cursor에서 alpha-gen MCP: health_check, get_safety_policy
+```
+
+외부 CI one-shot (API key 선택):
+
+```bash
+py automation/cursor_readiness_agent.py
 ```
 
 ---
@@ -487,7 +537,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-새 웹 제품 경로는 `.env`를 우선 사용합니다. `.env.example`을 복사한 뒤 `KIS_*`, `ACCOUNT_NO`, `ANTHROPIC_API_KEY`를 입력하세요.
+새 웹 제품 경로는 `.env`를 우선 사용합니다. [`env.example`](./env.example)을 복사한 뒤 `KIS_*`, `ACCOUNT_NO`, `ANTHROPIC_API_KEY`를 입력하세요. paper 온보딩: [`docs/kis_paper_onboarding.md`](./docs/kis_paper_onboarding.md)
 
 ### 9.2 자동매매 엔진
 

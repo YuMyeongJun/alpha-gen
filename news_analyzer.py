@@ -16,6 +16,7 @@ news_analyzer.py — 뉴스 수집 + Claude 감성 분석 모듈
 
 import hashlib
 import json
+import re
 import time
 import random
 from datetime import datetime, timedelta
@@ -158,6 +159,39 @@ def _mock_sentiment(topic: str, headlines: list[str]) -> dict:
 # Claude API 감성 분석
 # ──────────────────────────────────────────────
 
+def _extract_message_text(message: object) -> str:
+    parts: list[str] = []
+    for block in getattr(message, "content", []) or []:
+        if getattr(block, "type", None) == "text":
+            text = getattr(block, "text", "")
+            if text:
+                parts.append(str(text))
+    return "\n".join(parts).strip()
+
+
+def _parse_claude_json(raw: str) -> dict | list:
+    text = raw.strip()
+    if not text:
+        raise json.JSONDecodeError("empty Claude response", text, 0)
+
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        for pattern in (r"\{[\s\S]*\}", r"\[[\s\S]*\]"):
+            match = re.search(pattern, text)
+            if match:
+                return json.loads(match.group())
+        raise
+
+
 def _claude_sentiment(topic: str, headlines: list[str]) -> dict:
     """Claude API로 뉴스 감성 분석"""
     try:
@@ -183,13 +217,16 @@ Respond ONLY with valid JSON (no markdown, no explanation):
             max_tokens=256,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = message.content[0].text.strip()
-        result = json.loads(raw)
+        raw = _extract_message_text(message)
+        result = _parse_claude_json(raw)
+        if not isinstance(result, dict):
+            raise ValueError("Claude response was not a JSON object")
         result["headlines_used"] = len(headlines)
         return result
 
     except json.JSONDecodeError as e:
-        print(f"[WARN] Claude 응답 파싱 실패: {e}")
+        preview = raw[:120].replace("\n", " ") if "raw" in locals() and raw else ""
+        print(f"[WARN] Claude 응답 파싱 실패: {e} preview={preview!r}")
         return {"score": 0, "label": "중립", "keywords": [], "reason": "분석 실패", "headlines_used": 0}
     except Exception as e:
         print(f"[WARN] Claude API 오류: {e} → 중립 처리")
@@ -300,11 +337,13 @@ Example shape: {{ {topics_json_keys} ... }}"""
 
         message = client.messages.create(
             model=config.CLAUDE_MODEL,
-            max_tokens=1024,
+            max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = message.content[0].text.strip()
-        parsed = json.loads(raw)
+        raw = _extract_message_text(message)
+        parsed = _parse_claude_json(raw)
+        if not isinstance(parsed, dict):
+            raise ValueError("Claude batch response was not a JSON object")
         out = {}
         for topic, headlines in topic_headlines.items():
             item = parsed.get(topic, {})

@@ -10,3 +10,4 @@ yfinance>=0.2.40
 pandas-ta-classic>=0.3.14b
 pytest>=8.0.0
 python-dotenv>=1.0.1
+mcp>=1.0.0

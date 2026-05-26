@@ -37,6 +37,15 @@ class BacktestRequest(BaseModel):
     initial_cash: int | None = Field(default=None, ge=1)
 
 
+class EmergencyStopRequest(BaseModel):
+    enabled: bool
+    reason: str = ""
+
+
+class PromotionStageRequest(BaseModel):
+    stage: Literal["mock", "paper", "shadow", "live_limited", "live_full"]
+
+
 class ApiEnvelope(BaseModel):
     status: Literal["ok", "error"]
     data: dict[str, Any]

@@ -1,0 +1,32 @@
+---
+description: Frontend ops console must reflect safety, worker, and audit backend state
+globs: frontend/**
+alwaysApply: false
+---
+
+# Frontend Ops Console
+
+`frontend/**` 변경 시 운영 UI와 백엔드 상태 표현을 동기화합니다.
+
+## 필수 UI 영역
+
+- **Safety**: 운영 단계, 긴급 정지, 자동/실거래 활성, 주문 한도·staleness (`#safety-status`, `#stage-form`, `#emergency-stop-form`)
+- **Worker**: 실행 상태, 마지막/다음 사이클, 요약 (`#worker-monitor`, header badges)
+- **Audit**: 최근 감사 이벤트 목록 (`#audit-list`)
+
+## API 계약
+
+- `frontend/app.js`는 `/api/safety`, `/api/audit`, `/api/system/status`, `/api/agent/worker/*`를 사용합니다.
+- React(Vite) 소스는 `frontend/src/**`, 빌드 산출물은 `frontend/dist/`입니다. FastAPI는 `dist/index.html`을 우선 서빙합니다.
+- API 필드명·의미 변경 시 backend와 함께 수정하고 ops-console 회귀(`alpha-gen-ops-console` skill)를 고려합니다.
+
+## 안전 UX
+
+- `live_*` stage와 긴급 정지는 눈에 띄는 badge/색상으로 표시합니다.
+- shadow 모드는 warning 스타일로 구분합니다.
+- 위험 액션(긴급 정지, stage 변경)은 확인 없이 자동 실행하지 않습니다.
+
+## 범위
+
+- Vite + React + TypeScript (`frontend/src/**`), 프로덕션은 `yarn build` → `frontend/dist/`.
+- FastAPI는 `frontend/dist/index.html`을 우선 서빙합니다.

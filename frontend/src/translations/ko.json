@@ -1,0 +1,118 @@
+{
+  "app": {
+    "title": "Alpha-Gen Web",
+    "subtitle": "AI 분석 · 백테스트 · 모의투자를 위한 실전형 운영 콘솔"
+  },
+  "nav": {
+    "label": "운영 콘솔 메뉴",
+    "sectionTitle": "메뉴",
+    "sectionCaption": "Navigation",
+    "dashboard": "대시보드",
+    "portfolio": "포트폴리오",
+    "signals": "시그널",
+    "orders": "주문",
+    "backtests": "백테스트",
+    "audit": "감사",
+    "system": "시스템"
+  },
+  "pages": {
+    "dashboard": {
+      "title": "대시보드",
+      "charts": "자산 · 시그널 차트"
+    },
+    "portfolio": {
+      "title": "포트폴리오"
+    },
+    "signals": {
+      "title": "전략 시그널"
+    },
+    "orders": {
+      "title": "주문 내역"
+    },
+    "backtests": {
+      "title": "백테스트",
+      "runDone": "백테스트를 실행했습니다.",
+      "runFailed": "백테스트 실패"
+    },
+    "audit": {
+      "title": "감사 이벤트"
+    },
+    "system": {
+      "title": "시스템 상태"
+    }
+  },
+  "ops": {
+    "syncPending": "동기화 대기 중",
+    "syncing": "동기화 중",
+    "syncingNote": "최신 상태를 가져오는 중입니다.",
+    "syncDone": "동기화 완료",
+    "syncError": "동기화 오류",
+    "unknownError": "알 수 없는 오류",
+    "autoRefresh": "자동 갱신",
+    "nextRun": "다음 실행",
+    "lastSync": "마지막 동기화",
+    "requestFailed": "요청 실패"
+  },
+  "sidebar": {
+    "workerRunning": "워커 실행 중",
+    "workerStopped": "워커 중지",
+    "emergencyStopOn": "긴급 정지 활성",
+    "emergencyStopOff": "긴급 정지 해제",
+    "configIncomplete": "설정 보완 필요",
+    "configComplete": "설정 완료",
+    "quickActions": "빠른 실행",
+    "agentControls": "Agent controls",
+    "refreshAnalysis": "분석 새로고침",
+    "refreshAnalysisDone": "분석을 새로고침했습니다.",
+    "runCycle": "에이전트 1회 실행",
+    "runCycleDone": "에이전트 사이클을 실행했습니다.",
+    "startWorker": "워커 시작",
+    "startWorkerDone": "워커를 시작했습니다.",
+    "stopWorker": "워커 중지",
+    "stopWorkerDone": "워커를 중지했습니다.",
+    "workerMonitor": "자동화 상태",
+    "workerMonitorCaption": "Worker monitor",
+    "currentStatus": "현재 상태",
+    "autoRunning": "자동 실행 중",
+    "idle": "대기 중",
+    "lastRun": "마지막 실행",
+    "nextRun": "다음 실행 예정",
+    "recentCycle": "최근 사이클 결과",
+    "cycleCount": "회 실행",
+    "signals": "시그널",
+    "orders": "주문",
+    "countUnit": "건",
+    "safetyControls": "운영 안전장치",
+    "safetyControlsCaption": "Safety controls",
+    "operatingStage": "운영 단계",
+    "autoOrders": "자동 주문",
+    "liveTrading": "실거래",
+    "enabled": "활성",
+    "disabled": "비활성",
+    "emergencyStop": "긴급 정지",
+    "active": "활성",
+    "inactive": "해제",
+    "normalOperation": "정상 운영 중",
+    "orderLimits": "주문 제한",
+    "perDay": "건/일",
+    "signalStaleness": "신호",
+    "quoteStaleness": "시세",
+    "seconds": "초",
+    "stopReason": "긴급 정지 사유",
+    "defaultStopReason": "운영자 수동 정지",
+    "enableEmergencyStop": "긴급 정지 활성화",
+    "disableEmergencyStop": "긴급 정지 해제",
+    "applyStage": "운영 단계 적용",
+    "emergencyStopEnabled": "긴급 정지를 활성화했습니다.",
+    "emergencyStopDisabled": "긴급 정지를 해제했습니다.",
+    "stageUpdated": "운영 단계를 변경했습니다.",
+    "paperOrder": "주문 테스트",
+    "paperOrderCaption": "Paper trading",
+    "symbol": "심볼",
+    "session": "세션",
+    "side": "방향",
+    "qty": "수량",
+    "submitPaperOrder": "Paper 주문",
+    "paperOrderDone": "Paper 주문을 처리했습니다."
+  }
+}

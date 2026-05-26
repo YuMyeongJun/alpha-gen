@@ -10,20 +10,29 @@ from fastapi.staticfiles import StaticFiles
 
 import config
 
-from .models import AgentCycleRequest, AnalysisRequest, BacktestRequest, PaperOrderRequest, WorkerRequest
-from .services import AgentService, AgentWorker, AnalyticsService, BacktestService, DiagnosticsService, RiskService, TradingService
-from .store import SQLiteStore
+from .models import (
+    AgentCycleRequest,
+    AnalysisRequest,
+    BacktestRequest,
+    EmergencyStopRequest,
+    PaperOrderRequest,
+    PromotionStageRequest,
+    WorkerRequest,
+)
+from .services import TradingSafetyError, build_service_bundle
 
 
 def create_app(db_path: str | None = None, bootstrap_legacy: bool = True) -> FastAPI:
-    store = SQLiteStore(db_path=db_path, bootstrap_legacy=bootstrap_legacy)
-    risk_service = RiskService(store)
-    analytics_service = AnalyticsService(store)
-    trading_service = TradingService(store, risk_service)
-    backtest_service = BacktestService(store)
-    diagnostics_service = DiagnosticsService(store)
-    agent_service = AgentService(store, analytics_service, trading_service, risk_service)
-    worker = AgentWorker(store, agent_service)
+    bundle = build_service_bundle(db_path=db_path, bootstrap_legacy=bootstrap_legacy)
+    store = bundle.store
+    risk_service = bundle.risk_service
+    safety_service = bundle.safety_service
+    analytics_service = bundle.analytics_service
+    trading_service = bundle.trading_service
+    backtest_service = bundle.backtest_service
+    diagnostics_service = bundle.diagnostics_service
+    agent_service = bundle.agent_service
+    worker = bundle.worker
 
     app = FastAPI(
         title="Alpha-Gen Web",
@@ -40,12 +49,14 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True) -> Fas
     )
 
     frontend_dir = Path(config.FRONTEND_DIR)
-    if frontend_dir.exists():
-        app.mount("/frontend", StaticFiles(directory=frontend_dir), name="frontend")
+    dist_dir = frontend_dir / "dist"
+    serve_dir = dist_dir if (dist_dir / "index.html").exists() else frontend_dir
+    index_path = serve_dir / "index.html" if (serve_dir / "index.html").exists() else None
 
-        @app.get("/", include_in_schema=False)
-        async def serve_index() -> FileResponse:
-            return FileResponse(frontend_dir / "index.html")
+    if index_path is not None:
+        assets_dir = serve_dir / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=assets_dir), name="frontend_assets")
 
     @app.get("/api/health")
     async def health() -> dict:
@@ -60,7 +71,12 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True) -> Fas
         return {
             "config": {
                 "mock_mode": config.MOCK_MODE,
+                "mock_mode_reason": config.MOCK_MODE_REASON,
+                "claude_model": config.CLAUDE_MODEL,
+                "claude_model_deprecated": config.CLAUDE_MODEL_DEPRECATED,
                 "allow_live_trading": config.ALLOW_LIVE_TRADING,
+                "operating_stage": safety_service.get_stage(),
+                "auto_order_enabled": safety_service.get_policy()["auto_orders_enabled"],
                 "db_path": str(store.db_path),
                 "frontend_dir": str(frontend_dir),
             },
@@ -81,6 +97,7 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True) -> Fas
 
     @app.get("/api/signals")
     async def recent_signals(limit: int = 20) -> dict:
+        analytics_service.ensure_signals_fresh_background()
         return {"signals": store.list_recent_signals(limit=limit)}
 
     @app.get("/api/portfolio")
@@ -90,6 +107,10 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True) -> Fas
     @app.get("/api/orders")
     async def orders(limit: int = 50) -> dict:
         return {"orders": store.list_recent_orders(limit=limit)}
+
+    @app.get("/api/orders/{order_id}/transitions")
+    async def order_transitions(order_id: str, limit: int = 50) -> dict:
+        return {"transitions": store.list_order_transitions(order_id=order_id, limit=limit)}
 
     @app.post("/api/orders/paper")
     async def paper_order(payload: PaperOrderRequest) -> dict:
@@ -122,6 +143,35 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True) -> Fas
     async def diagnostics() -> dict:
         return diagnostics_service.run()
 
+    @app.get("/api/safety")
+    async def safety_status() -> dict:
+        return {
+            "policy": safety_service.get_policy(),
+            "audit": store.list_audit_events(limit=20),
+        }
+
+    @app.post("/api/safety/emergency-stop")
+    async def update_emergency_stop(payload: EmergencyStopRequest) -> dict:
+        return {
+            "emergency_stop": safety_service.set_emergency_stop(
+                enabled=payload.enabled,
+                reason=payload.reason,
+            ),
+            "policy": safety_service.get_policy(),
+        }
+
+    @app.post("/api/safety/stage")
+    async def update_stage(payload: PromotionStageRequest) -> dict:
+        try:
+            stage = safety_service.set_stage(payload.stage)
+        except TradingSafetyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"stage": stage, "policy": safety_service.get_policy()}
+
+    @app.get("/api/audit")
+    async def audit_events(limit: int = 50) -> dict:
+        return {"events": store.list_audit_events(limit=limit)}
+
     @app.post("/api/agent/cycle")
     async def agent_cycle(payload: AgentCycleRequest) -> dict:
         return agent_service.run_cycle(
@@ -145,6 +195,18 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True) -> Fas
     @app.post("/api/agent/worker/stop")
     async def worker_stop() -> dict:
         return worker.stop()
+
+    if index_path is not None:
+
+        @app.get("/", include_in_schema=False)
+        async def serve_index() -> FileResponse:
+            return FileResponse(index_path)
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def serve_spa(full_path: str) -> FileResponse:
+            if full_path.startswith("api/") or full_path == "api":
+                raise HTTPException(status_code=404, detail="Not found")
+            return FileResponse(index_path)
 
     return app
 

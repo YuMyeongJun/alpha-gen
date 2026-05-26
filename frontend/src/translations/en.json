@@ -1,0 +1,118 @@
+{
+  "app": {
+    "title": "Alpha-Gen Web",
+    "subtitle": "Operations console for AI analytics, backtests, and paper trading"
+  },
+  "nav": {
+    "label": "Ops console menu",
+    "sectionTitle": "Menu",
+    "sectionCaption": "Navigation",
+    "dashboard": "Dashboard",
+    "portfolio": "Portfolio",
+    "signals": "Signals",
+    "orders": "Orders",
+    "backtests": "Backtests",
+    "audit": "Audit",
+    "system": "System"
+  },
+  "pages": {
+    "dashboard": {
+      "title": "Dashboard",
+      "charts": "Equity & signal charts"
+    },
+    "portfolio": {
+      "title": "Portfolio"
+    },
+    "signals": {
+      "title": "Strategy signals"
+    },
+    "orders": {
+      "title": "Orders"
+    },
+    "backtests": {
+      "title": "Backtests",
+      "runDone": "Backtest completed.",
+      "runFailed": "Backtest failed"
+    },
+    "audit": {
+      "title": "Audit events"
+    },
+    "system": {
+      "title": "System status"
+    }
+  },
+  "ops": {
+    "syncPending": "Waiting to sync",
+    "syncing": "Syncing",
+    "syncingNote": "Fetching the latest state.",
+    "syncDone": "Sync complete",
+    "syncError": "Sync error",
+    "unknownError": "Unknown error",
+    "autoRefresh": "Auto refresh",
+    "nextRun": "Next run",
+    "lastSync": "Last sync",
+    "requestFailed": "Request failed"
+  },
+  "sidebar": {
+    "workerRunning": "Worker running",
+    "workerStopped": "Worker stopped",
+    "emergencyStopOn": "Emergency stop active",
+    "emergencyStopOff": "Emergency stop off",
+    "configIncomplete": "Config incomplete",
+    "configComplete": "Config complete",
+    "quickActions": "Quick actions",
+    "agentControls": "Agent controls",
+    "refreshAnalysis": "Refresh analysis",
+    "refreshAnalysisDone": "Analysis refreshed.",
+    "runCycle": "Run agent once",
+    "runCycleDone": "Agent cycle completed.",
+    "startWorker": "Start worker",
+    "startWorkerDone": "Worker started.",
+    "stopWorker": "Stop worker",
+    "stopWorkerDone": "Worker stopped.",
+    "workerMonitor": "Automation status",
+    "workerMonitorCaption": "Worker monitor",
+    "currentStatus": "Current status",
+    "autoRunning": "Auto running",
+    "idle": "Idle",
+    "lastRun": "Last run",
+    "nextRun": "Next run",
+    "recentCycle": "Recent cycle",
+    "cycleCount": " cycles",
+    "signals": "Signals",
+    "orders": "Orders",
+    "countUnit": "",
+    "safetyControls": "Safety controls",
+    "safetyControlsCaption": "Safety controls",
+    "operatingStage": "Operating stage",
+    "autoOrders": "Auto orders",
+    "liveTrading": "Live trading",
+    "enabled": "enabled",
+    "disabled": "disabled",
+    "emergencyStop": "Emergency stop",
+    "active": "Active",
+    "inactive": "Off",
+    "normalOperation": "Normal operation",
+    "orderLimits": "Order limits",
+    "perDay": "/day",
+    "signalStaleness": "Signal",
+    "quoteStaleness": "Quote",
+    "seconds": "s",
+    "stopReason": "Stop reason",
+    "defaultStopReason": "Manual operator stop",
+    "enableEmergencyStop": "Enable emergency stop",
+    "disableEmergencyStop": "Disable emergency stop",
+    "applyStage": "Apply stage",
+    "emergencyStopEnabled": "Emergency stop enabled.",
+    "emergencyStopDisabled": "Emergency stop disabled.",
+    "stageUpdated": "Operating stage updated.",
+    "paperOrder": "Order test",
+    "paperOrderCaption": "Paper trading",
+    "symbol": "Symbol",
+    "session": "Session",
+    "side": "Side",
+    "qty": "Qty",
+    "submitPaperOrder": "Place paper order",
+    "paperOrderDone": "Paper order submitted."
+  }
+}

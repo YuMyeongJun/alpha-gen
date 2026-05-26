@@ -18,6 +18,7 @@ import math
 import time
 import json
 import os
+import threading
 from datetime import datetime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -30,6 +31,9 @@ KST = ZoneInfo("Asia/Seoul")
 # ──────────────────────────────────────────────
 _kis_token: str = ""
 _kis_token_expires: Optional[datetime] = None
+_kis_token_blocked_until: Optional[datetime] = None
+_kis_token_lock = threading.Lock()
+_KIS_TOKEN_CACHE_FILE = config.DATA_DIR / "kis_token_cache.json"
 
 # ──────────────────────────────────────────────
 # Mock 포트폴리오 상태 (메모리)
@@ -300,32 +304,202 @@ def get_mock_total_asset() -> int:
 # [3] KIS API (한국장)
 # ══════════════════════════════════════════════
 
-def _get_kis_token() -> str:
+def reset_kis_token_cache() -> None:
     global _kis_token, _kis_token_expires
-    import requests
+    _kis_token = ""
+    _kis_token_expires = None
+
+
+def kis_auth_blocked_reason() -> str | None:
     now = datetime.now(KST)
-    if _kis_token and _kis_token_expires and now < _kis_token_expires:
+    if _kis_token_blocked_until and now < _kis_token_blocked_until:
+        remaining = int((_kis_token_blocked_until - now).total_seconds())
+        return (
+            f"KIS OAuth cooldown ({remaining}s left): "
+            "모의 APP_KEY/SECRET 확인 또는 호출 제한 해제 대기"
+        )
+    return None
+
+
+def _load_cached_kis_token(now: datetime) -> str | None:
+    if not _KIS_TOKEN_CACHE_FILE.exists():
+        return None
+    try:
+        payload = json.loads(_KIS_TOKEN_CACHE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if payload.get("app_key") != config.KIS_APP_KEY:
+        return None
+    if payload.get("is_real_trading") != config.IS_REAL_TRADING:
+        return None
+    token = str(payload.get("access_token") or "")
+    expires_raw = payload.get("expires_at")
+    if not token or not expires_raw:
+        return None
+    expires_at = datetime.fromisoformat(str(expires_raw))
+    if now >= expires_at:
+        return None
+    return token
+
+
+def _save_cached_kis_token(token: str, expires_at: datetime) -> None:
+    _KIS_TOKEN_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "access_token": token,
+        "expires_at": expires_at.isoformat(),
+        "app_key": config.KIS_APP_KEY,
+        "is_real_trading": config.IS_REAL_TRADING,
+    }
+    _KIS_TOKEN_CACHE_FILE.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+def _get_kis_token(force_refresh: bool = False) -> str:
+    global _kis_token, _kis_token_expires, _kis_token_blocked_until
+    import requests
+
+    now = datetime.now(KST)
+    blocked = kis_auth_blocked_reason()
+    if blocked:
+        raise RuntimeError(blocked)
+
+    with _kis_token_lock:
+        blocked = kis_auth_blocked_reason()
+        if blocked:
+            raise RuntimeError(blocked)
+
+        if not force_refresh and _kis_token and _kis_token_expires and now < _kis_token_expires:
+            return _kis_token
+
+        if not force_refresh:
+            cached = _load_cached_kis_token(now)
+            if cached:
+                _kis_token = cached
+                _kis_token_expires = now + timedelta(hours=23)
+                return _kis_token
+
+        url = f"{config.KIS_URL}/oauth2/tokenP"
+        res = requests.post(
+            url,
+            json={
+                "grant_type": "client_credentials",
+                "appkey": config.KIS_APP_KEY,
+                "appsecret": config.KIS_APP_SECRET,
+            },
+            timeout=10,
+        )
+        if res.status_code == 403:
+            _kis_token_blocked_until = now + timedelta(seconds=config.KIS_TOKEN_COOLDOWN_SEC)
+            reset_kis_token_cache()
+            detail = res.text[:160].replace("\n", " ")
+            raise RuntimeError(
+                "KIS OAuth 403 (tokenP): 모의 APP_KEY/SECRET·계좌 확인, "
+                f"또는 {config.KIS_TOKEN_COOLDOWN_SEC}초 후 재시도 (호출 제한). "
+                f"detail={detail}"
+            )
+        res.raise_for_status()
+        _kis_token = res.json()["access_token"]
+        _kis_token_expires = now + timedelta(hours=23)
+        _kis_token_blocked_until = None
+        _save_cached_kis_token(_kis_token, _kis_token_expires)
         return _kis_token
-    url = f"{config.KIS_URL}/oauth2/tokenP"
-    res = requests.post(url, json={
-        "grant_type": "client_credentials",
-        "appkey": config.KIS_APP_KEY,
-        "appsecret": config.KIS_APP_SECRET,
-    }, timeout=10)
-    res.raise_for_status()
-    _kis_token = res.json()["access_token"]
-    _kis_token_expires = now + timedelta(hours=23)
-    return _kis_token
 
 
 def _kis_headers(tr_id: str) -> dict:
     return {
-        "Content-Type": "application/json",
+        "Content-Type": "application/json; charset=UTF-8",
         "authorization": f"Bearer {_get_kis_token()}",
         "appkey": config.KIS_APP_KEY,
         "appsecret": config.KIS_APP_SECRET,
         "tr_id": tr_id,
+        "custtype": "P",
     }
+
+
+def _kis_parse_response(res) -> dict:
+    import requests
+
+    try:
+        data = res.json()
+    except ValueError as exc:
+        res.raise_for_status()
+        raise RuntimeError(f"KIS non-JSON response (HTTP {res.status_code})") from exc
+
+    rt_cd = str(data.get("rt_cd", ""))
+    if rt_cd not in ("", "0"):
+        msg1 = data.get("msg1") or data.get("msg_cd") or "unknown KIS error"
+        raise RuntimeError(f"KIS rt_cd={rt_cd} {msg1}")
+
+    if res.status_code >= 400:
+        msg1 = data.get("msg1") or res.reason or "HTTP error"
+        raise requests.HTTPError(
+            f"{res.status_code} Server Error: {msg1} for url: {res.url}",
+            response=res,
+        )
+    return data
+
+
+def kis_get_balance() -> tuple[int, list[dict]]:
+    import requests
+    import time
+
+    tr_id = "TTTC8434R" if config.IS_REAL_TRADING else "VTTC8434R"
+    url = f"{config.KIS_URL}/uapi/domestic-stock/v1/trading/inquire-balance"
+    param_sets = (
+        {
+            "CANO": config.ACCOUNT_NO,
+            "ACNT_PRDT_CD": config.ACCOUNT_CODE,
+            "AFHR_FLPR_YN": "N",
+            "OFL_YN": "",
+            "INQR_DVSN": "02",
+            "UNPR_DVSN": "01",
+            "FUND_STTL_ICLD_YN": "N",
+            "FNCG_AMT_AUTO_RDPT_YN": "N",
+            "PRCS_DVSN": "01",
+            "CTX_AREA_FK100": "",
+            "CTX_AREA_NK100": "",
+        },
+        {
+            "CANO": config.ACCOUNT_NO,
+            "ACNT_PRDT_CD": config.ACCOUNT_CODE,
+            "AFHR_FLPR_YN": "N",
+            "OFL_YN": "",
+            "INQR_DVSN": "01",
+            "UNPR_DVSN": "01",
+            "FUND_STTL_ICLD_YN": "N",
+            "FNCG_AMT_AUTO_RDPT_YN": "N",
+            "PRCS_DVSN": "00",
+            "CTX_AREA_FK100": "",
+            "CTX_AREA_NK100": "",
+        },
+    )
+
+    last_error: Exception | None = None
+    for attempt, params in enumerate(param_sets):
+        try:
+            res = requests.get(url, headers=_kis_headers(tr_id), params=params, timeout=10)
+            data = _kis_parse_response(res)
+            output2 = data.get("output2") or []
+            if not output2:
+                raise RuntimeError("KIS balance response missing output2")
+            cash = int(output2[0].get("dnca_tot_amt", 0))
+            holdings = [
+                {
+                    "code": h["pdno"],
+                    "name": h["prdt_name"],
+                    "qty": int(h["hldg_qty"]),
+                    "avg_price": int(str(h["pchs_avg_pric"]).split(".")[0] or 0),
+                    "eval_price": int(h["prpr"]),
+                }
+                for h in data.get("output1", []) if int(h.get("hldg_qty", 0)) > 0
+            ]
+            return cash, holdings
+        except Exception as exc:
+            last_error = exc
+            if attempt + 1 < len(param_sets):
+                time.sleep(0.3)
+                continue
+            raise last_error
+    raise RuntimeError("KIS balance inquiry failed")
 
 
 def kis_get_price(stock_code: str) -> dict:
@@ -385,32 +559,6 @@ def kis_get_prev_day(stock_code: str) -> dict:
         "prev_low":   int(prev["stck_lwpr"]),
         "prev_close": int(prev["stck_clpr"]),
     }
-
-
-def kis_get_balance() -> tuple[int, list[dict]]:
-    import requests
-    tr_id = "TTTC8434R" if config.IS_REAL_TRADING else "VTTC8434R"
-    url = f"{config.KIS_URL}/uapi/domestic-stock/v1/trading/inquire-balance"
-    params = {
-        "CANO": config.ACCOUNT_NO, "ACNT_PRDT_CD": config.ACCOUNT_CODE,
-        "AFHR_FLPR_YN": "N", "OFL_YN": "", "INQR_DVSN": "02", "UNPR_DVSN": "01",
-        "FUND_STTL_ICLD_YN": "N", "FNCG_AMT_AUTO_RDPT_YN": "N",
-        "PRCS_DVSN": "01", "CTX_AREA_FK100": "", "CTX_AREA_NK100": "",
-    }
-    res = requests.get(url, headers=_kis_headers(tr_id), params=params, timeout=10)
-    res.raise_for_status()
-    data = res.json()
-    cash = int(data["output2"][0].get("dnca_tot_amt", 0))
-    holdings = [
-        {
-            "code": h["pdno"], "name": h["prdt_name"],
-            "qty": int(h["hldg_qty"]),
-            "avg_price": int(h["pchs_avg_pric"].split(".")[0]),
-            "eval_price": int(h["prpr"]),
-        }
-        for h in data["output1"] if int(h["hldg_qty"]) > 0
-    ]
-    return cash, holdings
 
 
 # KIS API 주문 관련 함수들은 order_engine.py로 분리되었습니다.

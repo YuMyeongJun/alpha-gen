@@ -38,3 +38,46 @@ def test_store_persists_signals_and_backtests(tmp_path):
     runs = store.list_backtest_runs()
     assert runs[0]["id"] == run["id"]
     assert runs[0]["summary"]["trade_count"] == 3
+
+
+def test_store_tracks_order_transitions_and_audit_events(tmp_path):
+    store = SQLiteStore(tmp_path / "alpha_gen.sqlite3", bootstrap_legacy=False)
+
+    order = store.create_order(
+        stock_code="005930",
+        stock_name="삼성전자",
+        session="KR",
+        side="buy",
+        mode="paper",
+        qty=1,
+        requested_price=75_000,
+        client_order_id="paper:005930:1",
+        metadata={"source": "test"},
+    )
+    assert order["status"] == "intent"
+
+    updated = store.transition_order(
+        order["id"],
+        to_status="filled",
+        event_type="paper_filled",
+        message="Paper order filled",
+        attempt_count=1,
+        executed_price=75_000,
+        realized_pnl=None,
+        metadata={"source": "test", "paper_fill": True},
+    )
+    assert updated["status"] == "filled"
+
+    transitions = store.list_order_transitions(order_id=order["id"])
+    assert transitions[0]["to_status"] == "filled"
+    assert transitions[-1]["to_status"] == "intent"
+
+    event = store.add_audit_event(
+        scope="safety",
+        event_type="promotion_stage_changed",
+        severity="info",
+        message="운영 단계 변경: paper",
+        payload={"stage": "paper"},
+    )
+    events = store.list_audit_events(limit=10)
+    assert events[0]["event_type"] == event["event_type"]

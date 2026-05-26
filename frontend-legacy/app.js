@@ -39,6 +39,13 @@ function badgeClassByStatus(status) {
   return "warning";
 }
 
+function badgeClassBySeverity(severity) {
+  const normalized = String(severity || "").toLowerCase();
+  if (["critical", "danger"].includes(normalized)) return "danger";
+  if (normalized === "warning") return "warning";
+  return "success";
+}
+
 function parseDate(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -408,7 +415,57 @@ function renderBacktests(payload) {
   `;
 }
 
-function renderSystem(payload) {
+function renderSafety(payload) {
+  const policy = payload.policy || {};
+  const stop = policy.emergency_stop || {};
+  const limits = policy.limits || {};
+
+  $("#stage-select").value = String(policy.stage || "paper");
+  $("#safety-status").innerHTML = `
+    <div class="worker-monitor-card">
+      <div class="worker-monitor-label">운영 단계</div>
+      <div class="worker-monitor-value">${escapeHtml(policy.stage || "-")}</div>
+      <div class="worker-monitor-note">자동 주문 ${policy.auto_orders_enabled ? "활성" : "비활성"} · 실거래 ${policy.live_orders_enabled ? "활성" : "비활성"}</div>
+    </div>
+    <div class="worker-monitor-card">
+      <div class="worker-monitor-label">긴급 정지</div>
+      <div class="worker-monitor-value ${stop.enabled ? "negative" : "positive"}">${stop.enabled ? "활성" : "해제"}</div>
+      <div class="worker-monitor-note">${escapeHtml(stop.reason || "정상 운영 중")}</div>
+    </div>
+    <div class="worker-monitor-card">
+      <div class="worker-monitor-label">주문 제한</div>
+      <div class="worker-monitor-value">${escapeHtml(String(limits.live_max_orders_per_day ?? "-"))}건/일</div>
+      <div class="worker-monitor-note">신호 ${escapeHtml(String(limits.signal_staleness_sec ?? "-"))}초 · 시세 ${escapeHtml(String(limits.quote_staleness_sec ?? "-"))}초</div>
+    </div>
+  `;
+}
+
+function renderAudit(payload) {
+  const events = payload.events || [];
+  if (!events.length) {
+    $("#audit-list").innerHTML = `<div class="list-card">감사 이벤트가 아직 없습니다.</div>`;
+    return;
+  }
+
+  $("#audit-list").innerHTML = `
+    <div class="audit-list">
+      ${events.map((event) => `
+        <div class="audit-card ${escapeHtml(String(event.severity || "info").toLowerCase())}">
+          <div class="audit-top">
+            <div>
+              <div class="audit-title">${escapeHtml(event.event_type)}</div>
+              <div class="audit-meta">${formatCompactDateTime(event.created_at)} · ${escapeHtml(event.scope || "-")}${event.session ? ` · ${escapeHtml(event.session)}` : ""}</div>
+            </div>
+            <span class="badge ${badgeClassBySeverity(event.severity)}">${escapeHtml(event.severity || "info")}</span>
+          </div>
+          <div class="audit-message">${escapeHtml(event.message || "-")}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderSystem(payload, policy) {
   const workerRunning = Boolean(payload.worker.running);
   $("#system-summary").textContent = payload.diagnostics.summary;
   $("#system-summary").className = `badge ${badgeClassByStatus(payload.diagnostics.summary)}`;
@@ -418,13 +475,13 @@ function renderSystem(payload) {
   const missingConfig = payload.diagnostics.integrations.missing_config || [];
   const modeText = payload.config.mock_mode
     ? `Mock (${payload.config.mock_mode_reason || "manual"})`
-    : payload.config.allow_live_trading
-      ? "Live Enabled"
-      : "Paper Trading";
+    : `${payload.config.operating_stage || "paper"}${payload.config.allow_live_trading ? " · live enabled" : ""}`;
 
   $("#runtime-badges").innerHTML = `
     <span class="badge ${payload.config.mock_mode ? "warning" : "success"}">${escapeHtml(modeText)}</span>
+    <span class="badge ${policy.shadow_mode ? "warning" : policy.live_orders_enabled ? "danger" : "success"}">${escapeHtml(policy.stage || payload.config.operating_stage || "paper")}</span>
     <span class="badge ${workerRunning ? "success live" : "danger"}">${workerRunning ? "워커 실행 중" : "워커 중지"}</span>
+    <span class="badge ${policy.emergency_stop?.enabled ? "danger" : "success"}">${policy.emergency_stop?.enabled ? "긴급 정지 활성" : "긴급 정지 해제"}</span>
     <span class="badge ${missingConfig.length ? "warning" : "success"}">${missingConfig.length ? "설정 보완 필요" : "설정 완료"}</span>
   `;
 
@@ -471,6 +528,14 @@ function renderSystem(payload) {
           <span>다음 실행 예정</span>
           <strong>${formatRelative(payload.worker.next_cycle_at)}</strong>
         </div>
+        <div class="system-card">
+          <span>운영 단계</span>
+          <strong>${escapeHtml(policy.stage || "-")}</strong>
+        </div>
+        <div class="system-card">
+          <span>긴급 정지</span>
+          <strong>${policy.emergency_stop?.enabled ? "활성" : "해제"}</strong>
+        </div>
       </div>
       <details class="details-card">
         <summary>진단 상세 JSON 보기</summary>
@@ -512,19 +577,23 @@ async function loadDashboard(isAutoRefresh = false) {
   let workerRunning = false;
 
   try {
-    const [portfolio, signals, orders, backtests, system] = await Promise.all([
+    const [portfolio, signals, orders, backtests, system, safety, audit] = await Promise.all([
       api("/api/portfolio"),
       api("/api/signals"),
       api("/api/orders"),
       api("/api/backtests"),
       api("/api/system/status"),
+      api("/api/safety"),
+      api("/api/audit"),
     ]);
 
     renderPortfolio(portfolio);
     renderSignals(signals);
     renderOrders(orders);
     renderBacktests(backtests);
-    renderSystem(system);
+    renderSafety(safety);
+    renderAudit(audit);
+    renderSystem(system, safety.policy || {});
     renderSummaryStrip(portfolio, signals, system);
     renderEquityChart(portfolio.equity || []);
     renderSignalChart(signals.signals || []);
@@ -583,6 +652,39 @@ $("#worker-stop").addEventListener("click", async () => {
     await postJson("/api/agent/worker/stop", {});
     await loadDashboard();
     toast("워커를 중지했습니다.");
+  } catch (error) {
+    toast(error.message, true);
+  }
+});
+
+$("#emergency-stop-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const reason = String($("#stop-reason").value || "").trim();
+  try {
+    await postJson("/api/safety/emergency-stop", { enabled: true, reason });
+    await loadDashboard();
+    toast("긴급 정지를 활성화했습니다.");
+  } catch (error) {
+    toast(error.message, true);
+  }
+});
+
+$("#clear-emergency-stop").addEventListener("click", async () => {
+  try {
+    await postJson("/api/safety/emergency-stop", { enabled: false, reason: "" });
+    await loadDashboard();
+    toast("긴급 정지를 해제했습니다.");
+  } catch (error) {
+    toast(error.message, true);
+  }
+});
+
+$("#stage-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await postJson("/api/safety/stage", { stage: String($("#stage-select").value) });
+    await loadDashboard();
+    toast("운영 단계를 변경했습니다.");
   } catch (error) {
     toast(error.message, true);
   }

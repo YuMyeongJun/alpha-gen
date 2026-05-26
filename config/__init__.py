@@ -10,7 +10,8 @@ FRONTEND_DIR = PROJECT_ROOT / "frontend"
 try:
     from dotenv import load_dotenv
 
-    load_dotenv(PROJECT_ROOT / ".env", override=True)
+    # Explicit process env (pytest, CI, shell exports) wins over .env defaults.
+    load_dotenv(PROJECT_ROOT / ".env", override=False)
 except Exception:
     pass
 
@@ -40,6 +41,14 @@ def _env_float(name: str, default: float) -> float:
         return float(raw)
     except ValueError:
         return default
+
+
+def _env_choice(name: str, default: str, allowed: set[str]) -> str:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    return value if value in allowed else default
 
 
 PLACEHOLDER_MARKERS = ("여기에", "your_", "YOUR_")
@@ -80,6 +89,36 @@ MOCK_MODE_REASON = (
     else "paper_or_live_mode"
 )
 
+OPERATING_STAGES = ("mock", "paper", "shadow", "live_limited", "live_full")
+DEFAULT_OPERATING_STAGE = (
+    "mock"
+    if MOCK_MODE
+    else "live_limited"
+    if ALLOW_LIVE_TRADING
+    else "paper"
+)
+OPERATING_STAGE = _env_choice(
+    "ALPHA_GEN_STAGE",
+    DEFAULT_OPERATING_STAGE,
+    set(OPERATING_STAGES),
+)
+if MOCK_MODE:
+    OPERATING_STAGE = "mock"
+
+AUTO_ORDER_ENABLED = OPERATING_STAGE in {"paper", "live_limited", "live_full"}
+SHADOW_MODE = OPERATING_STAGE == "shadow"
+LIVE_TRADING_STAGE = OPERATING_STAGE in {"live_limited", "live_full"}
+EMERGENCY_STOP = _env_bool("EMERGENCY_STOP", False)
+QUOTE_STALENESS_SEC = _env_int("QUOTE_STALENESS_SEC", 120)
+SIGNAL_STALENESS_SEC = _env_int("SIGNAL_STALENESS_SEC", 900)
+LIVE_MAX_ORDERS_PER_CYCLE = _env_int("LIVE_MAX_ORDERS_PER_CYCLE", 2)
+LIVE_MAX_ORDERS_PER_DAY = _env_int("LIVE_MAX_ORDERS_PER_DAY", 6)
+MAX_CONSECUTIVE_LOSSES = _env_int("MAX_CONSECUTIVE_LOSSES", 3)
+MAX_DAILY_LOSS_PCT = _env_float("MAX_DAILY_LOSS_PCT", 0.02)
+ENABLE_AUTO_LIQUIDATION = _env_bool("ENABLE_AUTO_LIQUIDATION", True)
+BROKER_SYNC_INTERVAL_SEC = _env_int("BROKER_SYNC_INTERVAL_SEC", 60)
+KIS_TOKEN_COOLDOWN_SEC = _env_int("KIS_TOKEN_COOLDOWN_SEC", 300)
+
 KIS_URL = (
     "https://openapi.koreainvestment.com:9443"
     if IS_REAL_TRADING
@@ -89,7 +128,13 @@ KIS_URL = (
 
 # [C] Claude
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "여기에_Claude_API_키")
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-3-5-haiku-20241022")
+_CLAUDE_MODEL_RAW = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+_DEPRECATED_CLAUDE_MODELS = {
+    "claude-3-5-haiku-20241022": "claude-haiku-4-5-20251001",
+    "claude-3-5-sonnet-20241022": "claude-sonnet-4-20250514",
+}
+CLAUDE_MODEL = _DEPRECATED_CLAUDE_MODELS.get(_CLAUDE_MODEL_RAW, _CLAUDE_MODEL_RAW)
+CLAUDE_MODEL_DEPRECATED = _CLAUDE_MODEL_RAW in _DEPRECATED_CLAUDE_MODELS
 CLAUDE_CREDENTIALS_CONFIGURED = _has_real_value(ANTHROPIC_API_KEY)
 
 

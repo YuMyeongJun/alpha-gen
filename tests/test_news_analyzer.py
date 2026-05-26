@@ -47,3 +47,16 @@ def test_fallback_keyword_match_without_topic_map(monkeypatch):
     }
     sent = news_analyzer.get_stock_sentiment("005930", all_results)
     assert sent["score"] == 2
+
+
+def test_parse_claude_json_strips_markdown_fence():
+    raw = '```json\n{"score": 2, "label": "매우긍정", "keywords": ["a"], "reason": "ok"}\n```'
+    parsed = news_analyzer._parse_claude_json(raw)
+    assert parsed["score"] == 2
+    assert parsed["label"] == "매우긍정"
+
+
+def test_parse_claude_json_extracts_embedded_object():
+    raw = 'Here is the result:\n{"score": 1, "label": "긍정", "keywords": [], "reason": "x"}'
+    parsed = news_analyzer._parse_claude_json(raw)
+    assert parsed["score"] == 1
