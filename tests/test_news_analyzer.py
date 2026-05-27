@@ -6,14 +6,15 @@ import news_analyzer
 
 def test_pltr_uses_stock_topic_map():
     """PLTR은 Palantir 전용 토픽으로 감성 점수를 받아야 함"""
+    pltr_topic = config.STOCK_TOPIC_MAP["PLTR"][0]
     all_results = {
-        "Palantir defense AI": {
+        pltr_topic: {
             "score": 1,
             "label": "긍정",
             "keywords": ["defense", "AIP"],
             "reason": "Palantir 방산 AI 수주 확대",
         },
-        "Nvidia AI chip": {
+        "Nvidia AI GPU data center chip": {
             "score": 2,
             "label": "매우긍정",
             "keywords": ["Blackwell"],
@@ -23,16 +24,17 @@ def test_pltr_uses_stock_topic_map():
     sent = news_analyzer.get_stock_sentiment("PLTR", all_results)
     assert sent["score"] == 1
     assert sent["label"] == "긍정"
-    assert "Palantir" in sent["reason"] or sent["reason"]
+    assert sent["reason"]
 
 
-def test_tsla_averages_multiple_topics():
+def test_tsla_single_topic():
+    """TSLA는 단일 토픽으로 감성 점수를 받아야 함"""
+    tsla_topic = config.STOCK_TOPIC_MAP["TSLA"][0]
     all_results = {
-        "Elon Musk": {"score": 2, "label": "매우긍정", "keywords": [], "reason": "Musk 긍정"},
-        "Tesla stock": {"score": 0, "label": "중립", "keywords": [], "reason": "Tesla 중립"},
+        tsla_topic: {"score": 2, "label": "매우긍정", "keywords": [], "reason": "Tesla 급등"},
     }
     sent = news_analyzer.get_stock_sentiment("TSLA", all_results)
-    assert sent["score"] == 1  # (2+0)/2 = 1
+    assert sent["score"] == 2
 
 
 def test_fallback_keyword_match_without_topic_map(monkeypatch):
