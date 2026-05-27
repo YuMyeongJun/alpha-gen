@@ -32,7 +32,10 @@ KST = ZoneInfo("Asia/Seoul")
 _kis_token: str = ""
 _kis_token_expires: Optional[datetime] = None
 _kis_token_blocked_until: Optional[datetime] = None
+_kis_api_degraded_until: Optional[datetime] = None
 _kis_token_lock = threading.Lock()
+_kis_request_lock = threading.Lock()
+_kis_last_request_at: Optional[datetime] = None
 _KIS_TOKEN_CACHE_FILE = config.DATA_DIR / "kis_token_cache.json"
 
 # ──────────────────────────────────────────────
@@ -321,6 +324,68 @@ def kis_auth_blocked_reason() -> str | None:
     return None
 
 
+def kis_api_degraded_reason() -> str | None:
+    now = datetime.now(KST)
+    if _kis_api_degraded_until and now < _kis_api_degraded_until:
+        remaining = int((_kis_api_degraded_until - now).total_seconds())
+        return f"KIS API degraded mode ({remaining}s left): 서버 오류·호출 과다로 일시 중단"
+    return None
+
+
+def _mark_kis_api_degraded() -> None:
+    global _kis_api_degraded_until
+    _kis_api_degraded_until = datetime.now(KST) + timedelta(seconds=config.KIS_API_DEGRADED_COOLDOWN_SEC)
+
+
+def _kis_throttle_wait() -> None:
+    global _kis_last_request_at
+    min_interval = max(config.KIS_API_MIN_INTERVAL_MS, 0) / 1000.0
+    if min_interval <= 0:
+        return
+    now = datetime.now(KST)
+    if _kis_last_request_at is not None:
+        elapsed = (now - _kis_last_request_at).total_seconds()
+        if elapsed < min_interval:
+            time.sleep(min_interval - elapsed)
+    _kis_last_request_at = datetime.now(KST)
+
+
+def _kis_request_get(tr_id: str, url: str, params: dict) -> dict:
+    import requests
+
+    degraded = kis_api_degraded_reason()
+    if degraded:
+        raise RuntimeError(degraded)
+
+    last_error: Exception | None = None
+    retries = max(config.KIS_API_RETRY_COUNT, 1)
+    for attempt in range(retries):
+        try:
+            with _kis_request_lock:
+                _kis_throttle_wait()
+                res = requests.get(url, headers=_kis_headers(tr_id), params=params, timeout=10)
+            return _kis_parse_response(res)
+        except requests.HTTPError as exc:
+            last_error = exc
+            status = exc.response.status_code if exc.response is not None else 0
+            if status in {401, 403} and attempt == 0:
+                reset_kis_token_cache()
+                continue
+            if status >= 500 and attempt + 1 < retries:
+                time.sleep(0.5 * (attempt + 1))
+                continue
+            if status >= 500:
+                _mark_kis_api_degraded()
+            raise
+        except Exception as exc:
+            last_error = exc
+            if attempt + 1 < retries:
+                time.sleep(0.5 * (attempt + 1))
+                continue
+            raise
+    raise last_error or RuntimeError("KIS request failed")
+
+
 def _load_cached_kis_token(now: datetime) -> str | None:
     if not _KIS_TOKEN_CACHE_FILE.exists():
         return None
@@ -439,7 +504,6 @@ def _kis_parse_response(res) -> dict:
 
 
 def kis_get_balance() -> tuple[int, list[dict]]:
-    import requests
     import time
 
     tr_id = "TTTC8434R" if config.IS_REAL_TRADING else "VTTC8434R"
@@ -476,8 +540,7 @@ def kis_get_balance() -> tuple[int, list[dict]]:
     last_error: Exception | None = None
     for attempt, params in enumerate(param_sets):
         try:
-            res = requests.get(url, headers=_kis_headers(tr_id), params=params, timeout=10)
-            data = _kis_parse_response(res)
+            data = _kis_request_get(tr_id, url, params)
             output2 = data.get("output2") or []
             if not output2:
                 raise RuntimeError("KIS balance response missing output2")
@@ -503,12 +566,10 @@ def kis_get_balance() -> tuple[int, list[dict]]:
 
 
 def kis_get_price(stock_code: str) -> dict:
-    import requests
     url = f"{config.KIS_URL}/uapi/domestic-stock/v1/quotations/inquire-price"
     params = {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": stock_code}
-    res = requests.get(url, headers=_kis_headers("FHKST01010100"), params=params, timeout=10)
-    res.raise_for_status()
-    o = res.json()["output"]
+    data = _kis_request_get("FHKST01010100", url, params)
+    o = data["output"]
     return {
         "current_price": int(o["stck_prpr"]),
         "open_price":    int(o["stck_oprc"]),
@@ -519,7 +580,6 @@ def kis_get_price(stock_code: str) -> dict:
 
 def kis_get_price_history(stock_code: str, days: int = 30) -> list[float]:
     """KIS 일별 종가 히스토리 (과거→현재 순, RSI/MA용)"""
-    import requests
     url = f"{config.KIS_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-price"
     params = {
         "FID_COND_MRKT_DIV_CODE": "J",
@@ -527,17 +587,13 @@ def kis_get_price_history(stock_code: str, days: int = 30) -> list[float]:
         "FID_PERIOD_DIV_CODE": "D",
         "FID_ORG_ADJ_PRC": "0",
     }
-    res = requests.get(
-        url, headers=_kis_headers("FHKST01010400"), params=params, timeout=10
-    )
-    res.raise_for_status()
-    rows = res.json().get("output", [])
+    data = _kis_request_get("FHKST01010400", url, params)
+    rows = data.get("output", [])
     closes: list[float] = []
     for row in rows:
         raw = row.get("stck_clpr")
         if raw is not None and str(raw).strip() not in ("", "0"):
             closes.append(float(raw))
-    # KIS: 최신일이 앞쪽 → 시간순 정렬
     closes.reverse()
     if len(closes) > days:
         closes = closes[-days:]
@@ -545,15 +601,16 @@ def kis_get_price_history(stock_code: str, days: int = 30) -> list[float]:
 
 
 def kis_get_prev_day(stock_code: str) -> dict:
-    import requests
     url = f"{config.KIS_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-price"
     params = {
         "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": stock_code,
         "FID_PERIOD_DIV_CODE": "D", "FID_ORG_ADJ_PRC": "0",
     }
-    res = requests.get(url, headers=_kis_headers("FHKST01010400"), params=params, timeout=10)
-    res.raise_for_status()
-    prev = res.json()["output"][1]
+    data = _kis_request_get("FHKST01010400", url, params)
+    rows = data.get("output") or []
+    if len(rows) < 2:
+        raise ValueError(f"KIS daily price insufficient rows for {stock_code}")
+    prev = rows[1]
     return {
         "prev_high":  int(prev["stck_hgpr"]),
         "prev_low":   int(prev["stck_lwpr"]),
@@ -638,7 +695,11 @@ def get_prev_day(stock_code: str, session: str = "KR") -> dict:
     if config.MOCK_MODE:
         return mock_get_prev_day(stock_code)
     if session == "KR":
-        return kis_get_prev_day(stock_code)
+        try:
+            return kis_get_prev_day(stock_code)
+        except Exception as exc:
+            print(f"[WARN] KIS 전일시세 실패({stock_code}): {exc} → Mock 폴백")
+            return mock_get_prev_day(stock_code)
     else:
         # yfinance: 전일 데이터 추출
         try:

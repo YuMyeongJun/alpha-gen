@@ -30,6 +30,9 @@ def _configure_paper_kis_env(monkeypatch) -> None:
     monkeypatch.setenv("KIS_APP_SECRET", "test-app-secret")
     monkeypatch.setenv("ACCOUNT_NO", "12345678")
     _reload_config()
+    market_data.reset_kis_token_cache()
+    market_data._kis_token_blocked_until = None
+    market_data._kis_api_degraded_until = None
 
 
 def test_health_and_ready_endpoints(tmp_path):
@@ -134,6 +137,8 @@ def test_paper_stage_portfolio_syncs_kis_balance(tmp_path, monkeypatch):
     monkeypatch.setattr(market_data, "get_balance", fake_get_balance)
 
     client = make_client(tmp_path)
+    sync = client.post("/api/broker/sync", params={"session": "KR"})
+    assert sync.status_code == 200
     portfolio = client.get("/api/portfolio")
 
     assert portfolio.status_code == 200
@@ -155,6 +160,8 @@ def test_mock_mode_portfolio_uses_internal_paper_cash(tmp_path, monkeypatch):
     monkeypatch.setattr(market_data, "get_balance", fake_get_balance)
 
     client = make_client(tmp_path)
+    sync = client.post("/api/broker/sync", params={"session": "KR"})
+    assert sync.status_code == 200
     portfolio = client.get("/api/portfolio")
 
     assert portfolio.status_code == 200
@@ -170,6 +177,8 @@ def test_paper_stage_broker_sync_failure_emits_audit(tmp_path, monkeypatch):
     monkeypatch.setattr(market_data, "get_balance", failing_get_balance)
 
     client = make_client(tmp_path)
+    sync = client.post("/api/broker/sync", params={"session": "KR"})
+    assert sync.status_code == 200
     portfolio = client.get("/api/portfolio")
 
     assert portfolio.status_code == 200

@@ -404,20 +404,31 @@ class AnalyticsService:
 
         signals: list[dict[str, Any]] = []
         for stock_code, stock_info in market_data.get_target_stocks_for_session(resolved).items():
-            quote = market_data.get_price(stock_code, resolved)
-            history = market_data.get_price_history(stock_code, session=resolved, days=30)
-            prev_day = (
-                market_data.get_prev_day(stock_code, resolved)
-                if config.ENABLE_VOLATILITY_BREAKOUT
-                else None
-            )
-            sentiment = news_analyzer.get_stock_sentiment(stock_code, topic_results)
-            technicals = technical.evaluate_buy_technicals(
-                stock_code,
-                history,
-                quote,
-                prev_day=prev_day,
-            )
+            try:
+                quote = market_data.get_price(stock_code, resolved)
+                history = market_data.get_price_history(stock_code, session=resolved, days=30)
+                prev_day = (
+                    market_data.get_prev_day(stock_code, resolved)
+                    if config.ENABLE_VOLATILITY_BREAKOUT
+                    else None
+                )
+                sentiment = news_analyzer.get_stock_sentiment(stock_code, topic_results)
+                technicals = technical.evaluate_buy_technicals(
+                    stock_code,
+                    history,
+                    quote,
+                    prev_day=prev_day,
+                )
+            except Exception as exc:
+                self.store.add_audit_event(
+                    scope="agent",
+                    event_type="signal_build_failed",
+                    severity="warning",
+                    message=f"{stock_code} 시그널 생성 실패: {exc}",
+                    session=resolved,
+                    stock_code=stock_code,
+                )
+                continue
             signal = {
                 "stock_code": stock_code,
                 "stock_name": stock_info["name"],
@@ -484,6 +495,8 @@ class AnalyticsService:
 
 
 class TradingService:
+    _broker_sync_audit_lock = threading.Lock()
+
     def __init__(self, store: SQLiteStore, risk_service: RiskService, safety_service: SafetyService) -> None:
         self.store = store
         self.risk_service = risk_service
@@ -587,38 +600,46 @@ class TradingService:
             return False
         return self.safety_service.execution_mode() in {"paper", "live"}
 
-    def sync_live_positions_from_broker(self, session: str) -> None:
+    def sync_live_positions_from_broker(self, session: str, *, source: str = "portfolio") -> None:
         if not self._should_sync_broker_positions():
             return
         if session == "US" and not config.ENABLE_KIS_US_ORDERS:
             return
+        if self.safety_service.execution_mode() == "paper" and source not in {"worker", "manual"}:
+            return
 
-        blocked = market_data.kis_auth_blocked_reason()
+        blocked = market_data.kis_auth_blocked_reason() or market_data.kis_api_degraded_reason()
         if blocked:
             return
 
+        interval = (
+            config.PAPER_BROKER_SYNC_INTERVAL_SEC
+            if self.safety_service.execution_mode() == "paper"
+            else config.BROKER_SYNC_INTERVAL_SEC
+        )
         last_sync_key = f"broker_sync_last_at:{session}"
         last_sync_at = self.store.get_state(last_sync_key)
         sync_age = timestamp_age_seconds(str(last_sync_at) if last_sync_at else None)
-        if sync_age is not None and sync_age < config.BROKER_SYNC_INTERVAL_SEC:
+        if sync_age is not None and sync_age < interval:
             return
 
         self.store.set_state(last_sync_key, utc_timestamp())
         try:
             cash, holdings = market_data.get_balance(session)
         except Exception as exc:
-            fail_audit_key = f"broker_sync_last_fail_audit:{session}"
-            last_fail_audit = self.store.get_state(fail_audit_key)
-            fail_audit_age = timestamp_age_seconds(str(last_fail_audit) if last_fail_audit else None)
-            if fail_audit_age is None or fail_audit_age >= 300:
-                self.store.set_state(fail_audit_key, utc_timestamp())
-                self.store.add_audit_event(
-                    scope="broker",
-                    event_type="position_sync_failed",
-                    severity="warning",
-                    message=f"{session} 잔고 동기화 실패: {exc}",
-                    session=session,
-                )
+            with self._broker_sync_audit_lock:
+                fail_audit_key = "broker_sync_last_fail_audit"
+                last_fail_audit = self.store.get_state(fail_audit_key)
+                fail_audit_age = timestamp_age_seconds(str(last_fail_audit) if last_fail_audit else None)
+                if fail_audit_age is None or fail_audit_age >= 300:
+                    self.store.set_state(fail_audit_key, utc_timestamp())
+                    self.store.add_audit_event(
+                        scope="broker",
+                        event_type="position_sync_failed",
+                        severity="warning",
+                        message=f"{session} 잔고 동기화 실패: {exc}",
+                        session=session,
+                    )
             return
         positions = [
             {
@@ -1326,7 +1347,7 @@ class AgentService:
                 "stage": self.safety_service.get_stage(),
             },
         )
-        self.trading_service.sync_live_positions_from_broker(resolved)
+        self.trading_service.sync_live_positions_from_broker(resolved, source="worker")
         analysis = self.analytics_service.analyze_market(session=resolved, force_refresh=force_refresh)
         stop_loss_orders = self.trading_service.run_stop_loss_cycle()
         executed_orders = []

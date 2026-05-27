@@ -104,6 +104,11 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True) -> Fas
     async def portfolio() -> dict:
         return trading_service.get_portfolio_snapshot()
 
+    @app.post("/api/broker/sync")
+    async def broker_sync(session: str = "KR") -> dict:
+        trading_service.sync_live_positions_from_broker(session, source="manual")
+        return trading_service.get_portfolio_snapshot()
+
     @app.get("/api/orders")
     async def orders(limit: int = 50) -> dict:
         return {"orders": store.list_recent_orders(limit=limit)}

@@ -2,6 +2,22 @@
 
 paper 워커를 2–3일 운영하며 기록합니다. shadow 승격 전에 완료하세요.
 
+## Paper 안정화 루틴 (권장)
+
+1. **uvicorn 1개만** 실행 (중복 기동 시 KIS 토큰 403/500 증가)
+2. **워커 60초 주기** ON — 잔고·시그널·주문은 워커 사이클 중심
+3. 콘솔 폴링만으로 KIS 잔고 sync **하지 않음** (paper는 worker/manual만 sync)
+4. Audit에 `position_sync_failed` 연속 시 **5분 대기** 후 `py scripts/kis_smoke_test.py`
+5. 하루 1회: `py scripts/paper_onboarding_check.py` + 긴급정지 ON/OFF 테스트
+
+### .env 안정화 튜닝 (선택)
+
+```env
+PAPER_BROKER_SYNC_INTERVAL_SEC=300
+KIS_API_MIN_INTERVAL_MS=400
+BROKER_SYNC_INTERVAL_SEC=120
+```
+
 ## 일일 기록
 
 | 날짜 | Worker 사이클 | 시그널 | 주문 filled | rejected | 긴급정지 | 비고 |
