@@ -10,11 +10,11 @@ export const SystemPage = () => {
   return (
     <>
       <Helmet>
-        <title>{t("pages.system.title")} · {t("app.title")}</title>
+        <title>
+          {t("pages.system.title")} · {t("app.title")}
+        </title>
       </Helmet>
-      <section className="grid grid-single">
-        <SystemPanel system={data.system} policy={data.safety.policy} />
-      </section>
+      <SystemPanel system={data.system} policy={data.safety.policy} />
     </>
   );
 };

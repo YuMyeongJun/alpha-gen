@@ -12,8 +12,21 @@ void i18n
       ko: { translation: ko },
       en: { translation: en },
     },
+    lng: "ko",
     fallbackLng: "ko",
+    supportedLngs: ["ko", "en"],
+    detection: {
+      order: ["localStorage", "navigator"],
+      caches: ["localStorage"],
+      lookupLocalStorage: "i18nextLng",
+    },
     interpolation: { escapeValue: false },
   });
+
+document.documentElement.lang = i18n.language || "ko";
+
+i18n.on("languageChanged", (lng) => {
+  document.documentElement.lang = lng;
+});
 
 export default i18n;

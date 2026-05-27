@@ -20,9 +20,12 @@ import json
 import os
 import threading
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 import config
+from state_store import StateStore
+
+_store = StateStore(config.DATA_DIR / "agent_state.db")
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -131,7 +134,7 @@ def mock_get_balance() -> tuple[int, list[dict]]:
     return _mock_cash, holdings
 
 
-MOCK_STATE_FILE = "mock_state.json"
+# MOCK_STATE_FILE = "mock_state.json"  # 레거시 — agent_state.db 전환 후 미사용
 
 
 def _today_kst() -> str:
@@ -152,6 +155,7 @@ def record_equity_snapshot(total_asset: int, session: str = "", cash: Optional[i
     })
     if len(equity_history) > MAX_EQUITY_HISTORY:
         equity_history = equity_history[-MAX_EQUITY_HISTORY:]
+    _store.append_equity(now_str, int(total_asset), cash, session)
 
 
 def ensure_bought_today_date() -> None:
@@ -167,20 +171,23 @@ def clear_bought_today() -> None:
     global agent_bought_today
     agent_bought_today = set()
     ensure_bought_today_date()
+    _store.clear_bought_today()
 
 
 def add_bought_today(code: str) -> None:
     ensure_bought_today_date()
     agent_bought_today.add(code)
+    _store.add_bought_today(code)
 
 
 def remove_bought_today(code: str) -> None:
     agent_bought_today.discard(code)
+    _store.remove_bought_today(code)
 
 
 def is_bought_today(code: str) -> bool:
     ensure_bought_today_date()
-    return code in agent_bought_today
+    return code in agent_bought_today  # in-memory set은 add/remove/clear로 _store와 동기화됨
 
 
 def _apply_agent_fields(state: dict) -> None:
@@ -243,10 +250,9 @@ def _build_state_dict() -> dict:
 
 
 def save_agent_state() -> None:
-    """에이전트 상태를 mock_state.json에 저장 (Mock/실전 공통)"""
+    """에이전트 상태를 agent_state.db에 저장 (Mock/실전 공통)"""
     try:
-        with open(MOCK_STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump(_build_state_dict(), f, ensure_ascii=False, indent=2)
+        _store.save(_build_state_dict())
     except Exception as e:
         print(f"[WARN] 에이전트 상태 저장 실패: {e}")
 
@@ -257,21 +263,17 @@ def save_mock_state() -> None:
 
 
 def load_agent_state() -> None:
-    """mock_state.json에서 에이전트 + Mock 포트폴리오 로드"""
+    """agent_state.db에서 에이전트 + Mock 포트폴리오 로드"""
     global _mock_cash, _mock_holdings, _mock_prices, mock_trade_log
-    if not os.path.exists(MOCK_STATE_FILE):
-        ensure_bought_today_date()
-        return
     try:
-        with open(MOCK_STATE_FILE, "r", encoding="utf-8") as f:
-            state = json.load(f)
+        state = _store.load()
         _apply_agent_fields(state)
         if config.MOCK_MODE:
             _mock_cash = state.get("cash", _mock_cash)
             _mock_holdings = state.get("holdings", _mock_holdings)
-            _mock_prices = {
-                k: float(v) for k, v in state.get("prices", _mock_prices).items()
-            }
+            raw_prices = state.get("prices", {})
+            if raw_prices:
+                _mock_prices.update({k: float(v) for k, v in raw_prices.items()})
             mock_trade_log.clear()
             mock_trade_log.extend(state.get("trade_log", []))
     except Exception as e:
@@ -311,6 +313,17 @@ def reset_kis_token_cache() -> None:
     global _kis_token, _kis_token_expires
     _kis_token = ""
     _kis_token_expires = None
+
+
+def get_kis_token_meta() -> dict[str, Any]:
+    """KIS OAuth 토큰 캐시 메타 (만료 시각 등)."""
+    expires_at = _kis_token_expires.isoformat() if _kis_token_expires else None
+    return {
+        "cached": bool(_kis_token),
+        "expires_at": expires_at,
+        "auth_blocked_reason": kis_auth_blocked_reason(),
+        "api_degraded_reason": kis_api_degraded_reason(),
+    }
 
 
 def kis_auth_blocked_reason() -> str | None:

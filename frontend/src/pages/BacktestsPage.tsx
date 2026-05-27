@@ -22,11 +22,11 @@ export const BacktestsPage = () => {
   return (
     <>
       <Helmet>
-        <title>{t("pages.backtests.title")} · {t("app.title")}</title>
+        <title>
+          {t("pages.backtests.title")} · {t("app.title")}
+        </title>
       </Helmet>
-      <section className="grid grid-single">
-        <BacktestsPanel runs={data.backtests.runs || []} onRunBacktest={() => void handleRunBacktest()} />
-      </section>
+      <BacktestsPanel runs={data.backtests.runs || []} onRunBacktest={() => void handleRunBacktest()} />
     </>
   );
 };

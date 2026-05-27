@@ -3,10 +3,15 @@
     "title": "Alpha-Gen Web",
     "subtitle": "AI 분석 · 백테스트 · 모의투자를 위한 실전형 운영 콘솔"
   },
+  "brand": {
+    "name": "트레이딩 콘솔",
+    "eyebrow": "ALPHA-GEN",
+    "consoleEyebrow": "ALPHA-GEN · 운영 콘솔"
+  },
   "nav": {
     "label": "운영 콘솔 메뉴",
     "sectionTitle": "메뉴",
-    "sectionCaption": "Navigation",
+    "sectionCaption": "탐색",
     "dashboard": "대시보드",
     "portfolio": "포트폴리오",
     "signals": "시그널",
@@ -14,6 +19,104 @@
     "backtests": "백테스트",
     "audit": "감사",
     "system": "시스템"
+  },
+  "common": {
+    "confirm": "확인",
+    "cancel": "취소",
+    "close": "닫기",
+    "execute": "실행",
+    "reset": "초기화",
+    "detail": "상세",
+    "filter": "필터",
+    "none": "없음",
+    "all": "전체",
+    "countUnit": "건",
+    "currencyUnit": "원",
+    "vsBaseline": "기준선 대비",
+    "cashWeight": "가용 비중",
+    "healthy": "정상",
+    "configured": "설정됨",
+    "notConfigured": "미설정",
+    "active": "활성",
+    "inactive": "비활성",
+    "cached": "캐시됨",
+    "expires": "만료",
+    "packagesOk": "{{ok}}/{{total}} 정상",
+    "requestDone": "요청이 완료되었습니다.",
+    "requestFailed": "요청에 실패했습니다.",
+    "syncDone": "브로커 포지션 동기화가 완료되었습니다.",
+    "syncFailed": "동기화에 실패했습니다.",
+    "operatorConfirm": "운영자 확인",
+    "languageKo": "한국어",
+    "languageEn": "English"
+  },
+  "domain": {
+    "worker": {
+      "running": "실행 중",
+      "stopped": "중지됨",
+      "estop": "긴급정지"
+    },
+    "workerStatus": {
+      "idle": "대기",
+      "running": "실행 중",
+      "stopped": "중지됨",
+      "error": "오류"
+    },
+    "orderSide": {
+      "buy": "매수",
+      "sell": "매도",
+      "all": "방향 전체"
+    },
+    "orderStatus": {
+      "all": "상태 전체",
+      "filled": "체결",
+      "rejected": "거절",
+      "pending": "대기"
+    },
+    "orderSession": {
+      "all": "세션 전체"
+    },
+    "signalVerdict": {
+      "buy": "매수 후보",
+      "sell": "매도 후보",
+      "watch": "관망",
+      "skip": "제외"
+    },
+    "technical": {
+      "pass": "통과",
+      "hold": "보류"
+    },
+    "stage": {
+      "mock": "목(mock)",
+      "paper": "모의",
+      "shadow": "관찰 모드",
+      "live_limited": "제한 실거래",
+      "live_full": "전체 실거래"
+    },
+    "stagePill": {
+      "shadow": "관찰",
+      "paper": "모의",
+      "live": "실거래"
+    },
+    "health": {
+      "ready": "준비됨",
+      "degraded": "저하됨",
+      "unknown": "알 수 없음"
+    },
+    "auditLevel": {
+      "info": "정보",
+      "warn": "경고",
+      "error": "오류"
+    },
+    "cycleStatus": {
+      "running": "실행 중",
+      "done": "완료"
+    },
+    "risk": {
+      "sleepMode": "휴면 모드",
+      "optionMode": "옵션 모드",
+      "dailyLossLimit": "일일 손실 한도"
+    }
   },
   "pages": {
     "dashboard": {
@@ -41,6 +144,174 @@
       "title": "시스템 상태"
     }
   },
+  "panels": {
+    "dashboard": {
+      "title": "운영 현황을 한눈에 보는 트레이딩 콘솔",
+      "subtitle": "핵심 지표와 차트를 대시보드에 모아두었습니다. 상세 데이터는 각 메뉴에서 확인하세요.",
+      "totalAsset": "총자산",
+      "cash": "현금",
+      "workerStatus": "워커 상태",
+      "riskStatus": "리스크 상태",
+      "dailyLimit": "일일 한도",
+      "quoteStaleness": "시세",
+      "equityEyebrow": "총자산",
+      "equityTitle": "총자산 추이",
+      "signalMixEyebrow": "시그널 분포",
+      "signalMixTitle": "시그널 분포",
+      "signalTotal": "총 {{count}}건",
+      "latestCycleEyebrow": "최근 사이클",
+      "latestCycleTitle": "최근 사이클",
+      "cycleId": "사이클 ID",
+      "cycleCount": "사이클 횟수",
+      "executedAt": "실행 시각",
+      "signalsGenerated": "생성 시그널",
+      "signalsGeneratedDetail": "{{count}}건 (매수 {{buy}})",
+      "ordersPlaced": "주문 발행",
+      "ordersPlacedDetail": "{{count}}건 ({{stage}})",
+      "nextRun": "다음 실행",
+      "periodAll": "전체",
+      "period1D": "1일",
+      "period1W": "1주",
+      "period1M": "1개월"
+    },
+    "orders": {
+      "title": "주문",
+      "subtitle": "최근 발행된 주문과 상태입니다.",
+      "cardTitle": "최근 주문",
+      "eyebrow": "주문",
+      "todayCount": "오늘 {{count}}건",
+      "empty": "주문 이력이 없습니다.",
+      "emptyFiltered": "필터 조건에 맞는 주문이 없습니다.",
+      "colId": "ID",
+      "colSymbol": "종목",
+      "colTime": "시각",
+      "colCode": "심볼",
+      "colSide": "방향",
+      "colQty": "수량",
+      "colPrice": "체결가",
+      "colStatus": "상태",
+      "colNote": "비고"
+    },
+    "signals": {
+      "title": "시그널",
+      "subtitle": "최근 사이클에서 생성된 시그널과 점수를 확인하세요.",
+      "totalSignals": "총 시그널",
+      "recentCycle": "최근 사이클",
+      "buyCandidates": "매수 후보",
+      "sellCandidates": "매도 후보",
+      "bullish": "강세",
+      "bearish": "약세",
+      "bearishNote": "관망 외 약세",
+      "avgScore": "평균 점수 {{score}}",
+      "listTitle": "시그널 리스트",
+      "eyebrow": "최근 사이클 · {{count}}건",
+      "empty": "아직 저장된 시그널이 없습니다.",
+      "colSymbol": "종목",
+      "colVerdict": "판정",
+      "colScore": "점수",
+      "colPrice": "현재가",
+      "colChange": "전일대비",
+      "colTechnical": "기술",
+      "detailTitle": "시그널 상세",
+      "session": "세션",
+      "analyzedAt": "분석 시각",
+      "sentimentScore": "감성 점수",
+      "sentimentReason": "감성 사유",
+      "technicalVerdict": "기술 판정",
+      "technicalReason": "기술 사유",
+      "rawData": "원시 데이터"
+    },
+    "system": {
+      "title": "시스템",
+      "subtitle": "백엔드 연결, 데이터 소스, 환경 변수 상태입니다.",
+      "runtimeTitle": "런타임",
+      "runtimeEyebrow": "런타임",
+      "adaptersTitle": "데이터 소스",
+      "adaptersEyebrow": "어댑터",
+      "syncPositions": "포지션 동기화",
+      "operatingStage": "운영 단계",
+      "worker": "워커",
+      "nextRun": "다음 실행",
+      "kisToken": "KIS 토큰",
+      "packages": "패키지",
+      "mockMode": "목(mock) 모드",
+      "missingConfig": "설정 누락",
+      "dangerTitle": "긴급 운영 액션",
+      "dangerEyebrow": "위험 구역",
+      "dangerNote": "다음 액션은 실행 즉시 반영되며 되돌릴 수 없습니다. 사유 입력 후 확인하세요.",
+      "reasonLabel": "실행 사유",
+      "clearCache": "캐시 초기화",
+      "refreshToken": "토큰 재발급",
+      "resetDb": "DB 스냅샷 후 초기화",
+      "diagnosticsJson": "진단 상세 JSON 보기",
+      "confirmCacheTitle": "감성 분석 캐시를 초기화하시겠습니까?",
+      "confirmCacheBody": "뉴스 감성 TTL 캐시가 비워집니다. 다음 분석 시 API 호출이 다시 발생할 수 있습니다.",
+      "confirmTokenTitle": "KIS OAuth 토큰을 재발급하시겠습니까?",
+      "confirmTokenBody": "기존 토큰 캐시를 삭제하고 새 토큰을 요청합니다. KIS 자격 증명이 필요합니다.",
+      "confirmDbTitle": "DB를 스냅샷 후 초기화하시겠습니까?",
+      "confirmDbBody": "현재 DB 파일을 백업한 뒤 페이퍼 포지션·현금만 초기화합니다. 감사 이벤트는 유지됩니다. 실거래 단계에서는 거부됩니다."
+    },
+    "portfolio": {
+      "title": "포트폴리오",
+      "subtitle": "현재 보유 포지션과 비중을 확인하세요.",
+      "evaluated": "평가금액",
+      "cash": "현금",
+      "holdings": "보유 종목",
+      "unrealizedPnl": "미실현 손익",
+      "positionsTitle": "보유 종목",
+      "positionsEyebrow": "포지션",
+      "currentCount": "현재 {{count}}건",
+      "empty": "보유 포지션이 없습니다.",
+      "vsBaseline": "{{pct}} vs 기준선",
+      "weight": "{{pct}}% 비중",
+      "prevDayHoldings": "전 거래일 {{count}}",
+      "colName": "종목",
+      "colCode": "코드",
+      "colSession": "세션",
+      "colQty": "수량",
+      "colAvg": "평단",
+      "colPrice": "현재가",
+      "colPnl": "손익률",
+      "emptyHint": "워커가 활성화되고 주문이 체결되면 여기 표시됩니다.",
+      "sleepActive": "— 활성",
+      "sleepInactive": "— 휴면 상태",
+      "unitCount": "개"
+    },
+    "audit": {
+      "title": "감사 로그",
+      "subtitle": "시스템 이벤트와 운영 행위 기록입니다.",
+      "empty": "감사 이벤트가 아직 없습니다.",
+      "colTime": "시각",
+      "colLevel": "레벨",
+      "colSource": "소스",
+      "colMessage": "메시지"
+    },
+    "backtests": {
+      "title": "백테스트",
+      "subtitle": "최근 실행한 전략 백테스트 결과입니다.",
+      "runButton": "최근 전략 백테스트",
+      "recentCount": "최근 {{count}}회",
+      "latestReturn": "최신 수익률 {{pct}}",
+      "avgWinRate": "평균 승률 {{pct}}%",
+      "empty": "백테스트 기록이 없습니다.",
+      "colTime": "실행 시각",
+      "colReturn": "수익률",
+      "colWinRate": "승률",
+      "colTrades": "거래 수",
+      "colPnl": "총 손익",
+      "report": "리포트",
+      "reportTitle": "백테스트 리포트",
+      "runId": "실행 ID",
+      "parametersSummary": "파라미터 · 요약"
+    }
+  },
+  "chart": {
+    "empty": "표시할 자산 히스토리가 아직 없습니다.",
+    "baseline": "기준선 (초기 원금)",
+    "totalAsset": "총자산",
+    "drawdown": "드로우다운 구간",
+    "current": "현재"
+  },
   "ops": {
     "syncPending": "동기화 대기 중",
     "syncing": "동기화 중",
@@ -51,6 +322,7 @@
     "autoRefresh": "자동 갱신",
     "nextRun": "다음 실행",
     "lastSync": "마지막 동기화",
+    "refresh": "새로고침",
     "requestFailed": "요청 실패"
   },
   "sidebar": {
@@ -61,7 +333,7 @@
     "configIncomplete": "설정 보완 필요",
     "configComplete": "설정 완료",
     "quickActions": "빠른 실행",
-    "agentControls": "Agent controls",
+    "agentControls": "에이전트 제어",
     "refreshAnalysis": "분석 새로고침",
     "refreshAnalysisDone": "분석을 새로고침했습니다.",
     "runCycle": "에이전트 1회 실행",
@@ -71,7 +343,7 @@
     "stopWorker": "워커 중지",
     "stopWorkerDone": "워커를 중지했습니다.",
     "workerMonitor": "자동화 상태",
-    "workerMonitorCaption": "Worker monitor",
+    "workerMonitorCaption": "워커 모니터",
     "currentStatus": "현재 상태",
     "autoRunning": "자동 실행 중",
     "idle": "대기 중",
@@ -83,7 +355,7 @@
     "orders": "주문",
     "countUnit": "건",
     "safetyControls": "운영 안전장치",
-    "safetyControlsCaption": "Safety controls",
+    "safetyControlsCaption": "안전 제어",
     "operatingStage": "운영 단계",
     "autoOrders": "자동 주문",
     "liveTrading": "실거래",
@@ -107,12 +379,22 @@
     "emergencyStopDisabled": "긴급 정지를 해제했습니다.",
     "stageUpdated": "운영 단계를 변경했습니다.",
     "paperOrder": "주문 테스트",
-    "paperOrderCaption": "Paper trading",
+    "paperOrderCaption": "모의 거래",
     "symbol": "심볼",
     "session": "세션",
     "side": "방향",
     "qty": "수량",
-    "submitPaperOrder": "Paper 주문",
-    "paperOrderDone": "Paper 주문을 처리했습니다."
+    "submitPaperOrder": "모의 주문",
+    "paperOrderDone": "모의 주문을 처리했습니다.",
+    "operator": "운영자",
+    "risk": "리스크",
+    "estopConfirmTitle": "긴급 정지를 활성화하시겠습니까?",
+    "estopConfirmBody": "모든 대기 중인 주문이 즉시 취소되고, 워커가 정지됩니다. 해제 전까지 신규 주문은 발행되지 않습니다.",
+    "validation": {
+      "stopReasonRequired": "긴급 정지 사유를 입력하세요.",
+      "stopReasonMin": "사유는 2자 이상이어야 합니다.",
+      "symbolRequired": "심볼을 입력하세요.",
+      "qtyNumber": "수량은 숫자여야 합니다."
+    }
   }
 }

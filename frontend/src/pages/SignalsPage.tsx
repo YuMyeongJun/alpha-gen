@@ -10,11 +10,11 @@ export const SignalsPage = () => {
   return (
     <>
       <Helmet>
-        <title>{t("pages.signals.title")} · {t("app.title")}</title>
+        <title>
+          {t("pages.signals.title")} · {t("app.title")}
+        </title>
       </Helmet>
-      <section className="grid grid-single">
-        <SignalsPanel signals={data.signals.signals || []} />
-      </section>
+      <SignalsPanel signals={data.signals.signals || []} />
     </>
   );
 };

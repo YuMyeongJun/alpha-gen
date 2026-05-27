@@ -37,3 +37,8 @@ export interface IBacktestRunReq {
   days: number;
   initial_cash: number;
 }
+
+export interface IAdminActionReq {
+  confirm: boolean;
+  reason: string;
+}

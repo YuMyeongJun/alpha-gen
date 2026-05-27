@@ -10,11 +10,11 @@ export const AuditPage = () => {
   return (
     <>
       <Helmet>
-        <title>{t("pages.audit.title")} · {t("app.title")}</title>
+        <title>
+          {t("pages.audit.title")} · {t("app.title")}
+        </title>
       </Helmet>
-      <section className="grid grid-single">
-        <AuditPanel events={data.audit.events || []} />
-      </section>
+      <AuditPanel events={data.audit.events || []} />
     </>
   );
 };

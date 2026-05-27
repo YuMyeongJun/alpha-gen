@@ -10,11 +10,11 @@ export const PortfolioPage = () => {
   return (
     <>
       <Helmet>
-        <title>{t("pages.portfolio.title")} · {t("app.title")}</title>
+        <title>
+          {t("pages.portfolio.title")} · {t("app.title")}
+        </title>
       </Helmet>
-      <section className="grid grid-single">
-        <PortfolioPanel portfolio={data.portfolio} signals={data.signals} />
-      </section>
+      <PortfolioPanel portfolio={data.portfolio} />
     </>
   );
 };

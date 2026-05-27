@@ -1,82 +1,107 @@
-import { Badge } from "@/components/common/Badge";
-import { OpsConsoleCharts } from "@/components/pages/OpsConsole/OpsConsoleCharts";
+import { useTranslation } from "react-i18next";
+import { Badge, Card, Metric, PageHeader } from "@/components/common";
 import type { IDashboardBundleRes } from "@/models/interface/res/IDashboardRes";
+import { buildEquitySeries } from "@/utils/equity";
 import { currency, percent, toneClass } from "@/utils/format";
 
 export interface IPortfolioPanelProps {
   portfolio: IDashboardBundleRes["portfolio"];
-  signals: IDashboardBundleRes["signals"];
 }
 
-export const PortfolioPanel = ({ portfolio, signals }: IPortfolioPanelProps) => {
-  const drawdown = portfolio.risk?.drawdown_pct || 0;
+export const PortfolioPanel = ({ portfolio }: IPortfolioPanelProps) => {
+  const { t } = useTranslation();
+  const { baseline } = buildEquitySeries(portfolio);
+  const pnlPct = baseline > 0 ? ((Number(portfolio.total_asset) - baseline) / baseline) * 100 : 0;
+  const cashWeight =
+    portfolio.total_asset > 0 ? (Number(portfolio.cash) / Number(portfolio.total_asset)) * 100 : 100;
+  const unrealized = portfolio.positions.reduce((sum, p) => {
+    const pnl = p.avg_price ? (p.last_price - p.avg_price) * p.qty : 0;
+    return sum + pnl;
+  }, 0);
 
   return (
-    <article className="panel panel-portfolio">
-      <div className="panel-header">
-        <h3>포트폴리오</h3>
-        <Badge>{portfolio.positions.length} positions</Badge>
+    <>
+      <PageHeader title={t("panels.portfolio.title")} subtitle={t("panels.portfolio.subtitle")} />
+
+      <div className="grid-4" style={{ marginBottom: 14 }}>
+        <Metric
+          label={t("panels.portfolio.evaluated")}
+          value={currency(portfolio.total_asset)}
+          unit={t("common.currencyUnit")}
+          sub={<span className="muted">{t("panels.portfolio.vsBaseline", { pct: percent(pnlPct) })}</span>}
+        />
+        <Metric
+          label={t("panels.portfolio.cash")}
+          value={currency(portfolio.cash)}
+          unit={t("common.currencyUnit")}
+          sub={<span className="muted">{t("panels.portfolio.weight", { pct: cashWeight.toFixed(1) })}</span>}
+        />
+        <Metric
+          label={t("panels.portfolio.holdings")}
+          value={portfolio.positions.length}
+          unit={t("panels.portfolio.unitCount")}
+          sub={
+            <span className="muted">
+              {t("panels.portfolio.prevDayHoldings", { count: portfolio.positions.length })}
+            </span>
+          }
+        />
+        <Metric
+          label={t("panels.portfolio.unrealizedPnl")}
+          value={currency(unrealized)}
+          unit={t("common.currencyUnit")}
+          sub={
+            <span className="muted">
+              {portfolio.risk?.sleep_mode ? t("panels.portfolio.sleepInactive") : t("panels.portfolio.sleepActive")}
+            </span>
+          }
+        />
       </div>
-      <div className="panel-overview">
-        <div className="mini-stat">
-          <div className="mini-stat-label">보유 포지션</div>
-          <div className="mini-stat-value">{portfolio.positions.length}개</div>
-        </div>
-        <div className="mini-stat">
-          <div className="mini-stat-label">드로우다운</div>
-          <div className={`mini-stat-value ${toneClass(drawdown)}`}>{percent(drawdown)}</div>
-        </div>
-        <div className="mini-stat">
-          <div className="mini-stat-label">손절 감시</div>
-          <div className="mini-stat-value">{portfolio.risk?.stop_loss_count || 0}건</div>
-        </div>
-        <div className="mini-stat">
-          <div className="mini-stat-label">운영 상태</div>
-          <div className="mini-stat-value">{portfolio.risk?.sleep_mode ? "휴면" : "활성"}</div>
-        </div>
-      </div>
-      <OpsConsoleCharts portfolio={portfolio} signals={signals} />
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>종목</th>
-              <th>코드</th>
-              <th>세션</th>
-              <th>수량</th>
-              <th>평단</th>
-              <th>현재가</th>
-              <th>손익률</th>
-            </tr>
-          </thead>
-          <tbody>
-            {portfolio.positions.length ? (
-              portfolio.positions.map((item) => {
-                const pnlPct = item.avg_price
+
+      <Card
+        title={t("panels.portfolio.positionsTitle")}
+        eyebrow={t("panels.portfolio.positionsEyebrow")}
+        right={<Badge tone="gray">{t("panels.portfolio.currentCount", { count: portfolio.positions.length })}</Badge>}
+      >
+        {portfolio.positions.length ? (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>{t("panels.portfolio.colName")}</th>
+                <th>{t("panels.portfolio.colCode")}</th>
+                <th>{t("panels.portfolio.colSession")}</th>
+                <th className="num">{t("panels.portfolio.colQty")}</th>
+                <th className="num">{t("panels.portfolio.colAvg")}</th>
+                <th className="num">{t("panels.portfolio.colPrice")}</th>
+                <th className="num">{t("panels.portfolio.colPnl")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {portfolio.positions.map((item) => {
+                const pnlPctRow = item.avg_price
                   ? ((item.last_price - item.avg_price) / item.avg_price) * 100
                   : 0;
                 return (
                   <tr key={`${item.stock_code}-${item.session}`}>
                     <td>{item.stock_name}</td>
-                    <td>{item.stock_code}</td>
+                    <td className="mono">{item.stock_code}</td>
                     <td>{item.session}</td>
-                    <td>{item.qty}</td>
-                    <td>{currency(item.avg_price)}</td>
-                    <td>{currency(item.last_price)}</td>
-                    <td className={toneClass(pnlPct)}>{percent(pnlPct)}</td>
+                    <td className="num">{item.qty}</td>
+                    <td className="num">{currency(item.avg_price)}</td>
+                    <td className="num">{currency(item.last_price)}</td>
+                    <td className={`num ${toneClass(pnlPctRow)}`}>{percent(pnlPctRow)}</td>
                   </tr>
                 );
-              })
-            ) : (
-              <tr>
-                <td colSpan={7}>
-                  <div className="empty-state">아직 보유 포지션이 없습니다.</div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </article>
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <div className="empty-state">
+            {t("panels.portfolio.empty")}
+            <div className="empty-state__hint">{t("panels.portfolio.emptyHint")}</div>
+          </div>
+        )}
+      </Card>
+    </>
   );
 };

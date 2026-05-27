@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import platform
+import shutil
 import threading
 import time
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from typing import Any
 import config
 import market_data
 import news_analyzer
+import ohlcv as ohlcv_module
 import risk_manager
 import technical
 from backtest import run_backtest
@@ -216,6 +218,16 @@ class SafetyService:
                 "max_consecutive_losses": config.MAX_CONSECUTIVE_LOSSES,
                 "max_daily_loss_pct": config.MAX_DAILY_LOSS_PCT,
             },
+            "usage": self._policy_usage(),
+        }
+
+    def _policy_usage(self) -> dict[str, Any]:
+        cycle_count, live_daily = self._count_live_orders()
+        orders_today = self._orders_today()
+        return {
+            "orders_today": len(orders_today),
+            "live_orders_today": live_daily,
+            "live_orders_cycle": cycle_count,
         }
 
     def execution_mode(self) -> str:
@@ -407,18 +419,17 @@ class AnalyticsService:
             try:
                 quote = market_data.get_price(stock_code, resolved)
                 history = market_data.get_price_history(stock_code, session=resolved, days=30)
-                prev_day = (
-                    market_data.get_prev_day(stock_code, resolved)
-                    if config.ENABLE_VOLATILITY_BREAKOUT
-                    else None
-                )
+                prev_day = market_data.get_prev_day(stock_code, resolved)
                 sentiment = news_analyzer.get_stock_sentiment(stock_code, topic_results)
                 technicals = technical.evaluate_buy_technicals(
                     stock_code,
                     history,
                     quote,
-                    prev_day=prev_day,
+                    prev_day=prev_day if config.ENABLE_VOLATILITY_BREAKOUT else None,
                 )
+                prev_close = float(prev_day.get("prev_close") or 0) if prev_day else 0
+                current_price = float(quote["current_price"])
+                change_pct = ((current_price - prev_close) / prev_close * 100) if prev_close > 0 else 0.0
             except Exception as exc:
                 self.store.add_audit_event(
                     scope="agent",
@@ -429,6 +440,22 @@ class AnalyticsService:
                     stock_code=stock_code,
                 )
                 continue
+
+            # OHLCV (MACD + 볼린저밴드) 신호 — 데이터 없으면 None(차단 안 함)
+            ohlcv_signals: dict[str, Any] | None = None
+            ohlcv_buy: bool | None = None
+            try:
+                raw = ohlcv_module.get_latest_signals(stock_code)
+                if "error" not in raw:
+                    ohlcv_signals = raw
+                    ohlcv_buy = bool(raw.get("signal_buy"))
+            except Exception:
+                pass
+
+            base_buy = sentiment["score"] >= config.SENTIMENT_BUY_THRESHOLD and technicals["signal"]
+            # OHLCV 데이터가 있을 때만 추가 필터로 적용
+            composite_buy = base_buy and (ohlcv_buy is None or ohlcv_buy)
+
             signal = {
                 "stock_code": stock_code,
                 "stock_name": stock_info["name"],
@@ -438,8 +465,11 @@ class AnalyticsService:
                 "sentiment_reason": sentiment["reason"],
                 "technical_signal": technicals["signal"],
                 "technical_reason": technicals["reason"],
-                "buy_signal": sentiment["score"] >= config.SENTIMENT_BUY_THRESHOLD and technicals["signal"],
+                "ohlcv_buy": ohlcv_buy,
+                "ohlcv": ohlcv_signals,
+                "buy_signal": composite_buy,
                 "current_price": quote["current_price"],
+                "change_pct": round(change_pct, 2),
                 "quote": quote,
                 "sentiment": sentiment,
                 "technical": technicals,
@@ -448,6 +478,15 @@ class AnalyticsService:
             }
             self.store.update_position_price(resolved, stock_code, quote["current_price"])
             signals.append(signal)
+
+            # 일봉 데이터 없으면 백그라운드 수집 트리거
+            if ohlcv_signals is None:
+                def _fetch(code: str = stock_code) -> None:
+                    try:
+                        ohlcv_module.fetch_and_store(code, days=200)
+                    except Exception:
+                        pass
+                threading.Thread(target=_fetch, daemon=True, name=f"ohlcv-fetch-{stock_code}").start()
 
         self.store.save_signals(signals)
         self.store.record_equity(
@@ -1260,6 +1299,7 @@ class DiagnosticsService:
         env_file = config.PROJECT_ROOT / ".env"
         kis_configured = config.KIS_CREDENTIALS_CONFIGURED
         claude_configured = config.CLAUDE_CREDENTIALS_CONFIGURED
+        kis_token_meta = market_data.get_kis_token_meta()
         paper_cash = self.store.get_paper_cash()
         overall = all(item["ok"] for item in package_checks.values()) and frontend_ok
         missing_config = []
@@ -1286,6 +1326,7 @@ class DiagnosticsService:
             "storage": {
                 "db_path": db_path,
                 "db_exists": self.store.db_path.exists(),
+                "db_size_bytes": self.store.db_path.stat().st_size if self.store.db_path.exists() else 0,
                 "paper_cash": paper_cash,
                 "positions": len(self.store.list_positions()),
                 "audit_events": len(self.store.list_audit_events(limit=200)),
@@ -1295,6 +1336,7 @@ class DiagnosticsService:
                 "claude_configured": claude_configured,
                 "frontend_present": frontend_ok,
                 "missing_config": missing_config,
+                "kis_token": kis_token_meta,
             },
             "policy": self.safety_service.get_policy(),
             "packages": package_checks,
@@ -1410,6 +1452,54 @@ class AgentWorker:
         self.agent_service = agent_service
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+        self.interrupted_session: str | None = None
+        self.interrupted_interval_sec: int | None = None
+        self._recover_stale_state()
+
+    def _recover_stale_state(self) -> None:
+        """서버 재시작 시 DB에 running=True가 남아 있으면 정리하고 감사 로그를 기록한다."""
+        prev = self.store.get_state("worker_state", {}) or {}
+        if not prev.get("running"):
+            return
+        self.interrupted_session = prev.get("session")
+        self.interrupted_interval_sec = prev.get("interval_sec")
+        prev["running"] = False
+        prev["current_status"] = "interrupted"
+        prev["interrupted_at"] = utc_timestamp()
+        self.store.set_state("worker_state", prev)
+        self.store.add_audit_event(
+            scope="system",
+            event_type="worker_interrupted",
+            severity="warning",
+            message=(
+                "서버 재시작으로 인해 워커가 비정상 종료되었습니다. "
+                f"마지막 세션: {self.interrupted_session}, "
+                f"주기: {self.interrupted_interval_sec}s"
+            ),
+            payload={
+                "last_cycle_at": prev.get("last_cycle_at") or prev.get("last_completed_at"),
+                "session": self.interrupted_session,
+                "interval_sec": self.interrupted_interval_sec,
+            },
+        )
+
+    def resume_if_interrupted(self, *, place_orders: bool = True) -> bool:
+        """이전에 실행 중이던 워커를 복원한다. 반환값: 재시작 여부."""
+        if self.interrupted_session is None or self.interrupted_interval_sec is None:
+            return False
+        session = self.interrupted_session
+        interval_sec = self.interrupted_interval_sec
+        self.interrupted_session = None
+        self.interrupted_interval_sec = None
+        self.start(interval_sec=interval_sec, session=session, place_orders=place_orders)
+        self.store.add_audit_event(
+            scope="system",
+            event_type="worker_auto_resumed",
+            severity="info",
+            message=f"인터럽트된 워커를 자동 재개했습니다. 세션: {session}, 주기: {interval_sec}s",
+            payload={"session": session, "interval_sec": interval_sec},
+        )
+        return True
 
     def start(self, *, interval_sec: int, session: str, place_orders: bool) -> dict[str, Any]:
         if self._thread and self._thread.is_alive():
@@ -1476,7 +1566,88 @@ class AgentWorker:
         return state
 
 
-def build_service_bundle(db_path: str | None = None, bootstrap_legacy: bool = True) -> ServiceBundle:
+class SystemAdminService:
+    def __init__(self, store: SQLiteStore, safety_service: SafetyService, worker: AgentWorker) -> None:
+        self.store = store
+        self.safety_service = safety_service
+        self.worker = worker
+
+    def clear_sentiment_cache(self, *, reason: str) -> dict[str, Any]:
+        cleared = news_analyzer.clear_sentiment_cache()
+        self.store.add_audit_event(
+            scope="system",
+            event_type="cache_cleared",
+            severity="warning",
+            message=f"감성 분석 캐시 {cleared}건 초기화",
+            payload={"cleared": cleared, "reason": reason},
+        )
+        return {"cleared": cleared}
+
+    def refresh_kis_token(self, *, reason: str) -> dict[str, Any]:
+        market_data.reset_kis_token_cache()
+        token = ""
+        error = None
+        if config.KIS_CREDENTIALS_CONFIGURED and not config.MOCK_MODE:
+            try:
+                token = market_data._get_kis_token(force_refresh=True)
+            except Exception as exc:
+                error = str(exc)
+        meta = market_data.get_kis_token_meta()
+        self.store.add_audit_event(
+            scope="system",
+            event_type="kis_token_refreshed",
+            severity="info" if not error else "warning",
+            message="KIS OAuth 토큰 재발급" if not error else f"KIS OAuth 토큰 재발급 실패: {error}",
+            payload={"reason": reason, "cached": bool(token), "meta": meta, "error": error},
+        )
+        if error:
+            raise TradingSafetyError(error)
+        return {"token_cached": bool(token), "meta": meta}
+
+    def reset_database(self, *, reason: str) -> dict[str, Any]:
+        policy = self.safety_service.get_policy()
+        if policy["emergency_stop"]["enabled"]:
+            raise TradingSafetyError("긴급정지 상태에서는 DB 초기화를 할 수 없습니다.")
+        stage = self.safety_service.get_stage()
+        if stage in SafetyService.LIVE_STAGES:
+            raise TradingSafetyError("live 단계에서는 DB 초기화를 할 수 없습니다.")
+
+        db_path = self.store.db_path
+        stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        backup_path = db_path.with_name(f"{db_path.stem}_{stamp}.bak{db_path.suffix}")
+        if db_path.exists():
+            shutil.copy2(db_path, backup_path)
+            with self.store._connect() as conn:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+        self.store.reset_paper_trading_state()
+        worker_state = self.store.get_state("worker_state", {}) or {}
+        worker_state.update({"running": False, "current_status": "stopped"})
+        self.store.set_state("worker_state", worker_state)
+
+        self.store.add_audit_event(
+            scope="system",
+            event_type="db_reset",
+            severity="critical",
+            message="페이퍼 트레이딩 DB 스냅샷 후 초기화",
+            payload={
+                "reason": reason,
+                "backup_path": str(backup_path),
+                "initial_cash": config.MOCK_INITIAL_CASH,
+            },
+        )
+        return {
+            "backup_path": str(backup_path),
+            "paper_cash": self.store.get_paper_cash(),
+            "positions": len(self.store.list_positions()),
+        }
+
+
+def build_service_bundle(
+    db_path: str | None = None,
+    bootstrap_legacy: bool = True,
+    auto_resume_worker: bool = False,
+) -> ServiceBundle:
     store = SQLiteStore(db_path=db_path, bootstrap_legacy=bootstrap_legacy)
     risk_service = RiskService(store)
     safety_service = SafetyService(store, risk_service)
@@ -1486,6 +1657,8 @@ def build_service_bundle(db_path: str | None = None, bootstrap_legacy: bool = Tr
     diagnostics_service = DiagnosticsService(store, safety_service)
     agent_service = AgentService(store, analytics_service, trading_service, risk_service, safety_service)
     worker = AgentWorker(store, agent_service)
+    if auto_resume_worker and not safety_service.get_emergency_stop().get("enabled"):
+        worker.resume_if_interrupted()
     return ServiceBundle(
         store=store,
         risk_service=risk_service,

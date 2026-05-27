@@ -1,7 +1,7 @@
 # alpha-gen — 세션 인수인계 문서 (Context Handoff)
 
 > **목적**: 새 Cursor 채팅 / 다른 개발자가 **코드베이스·진행 상황·다음 작업**을 바로 이어갈 수 있도록 정리한 문서  
-> **최종 갱신**: 2026-05-23  
+> **최종 갱신**: 2026-05-27  
 > **관련 문서**: [README.md](./README.md) (상세 스펙), [workthrough.md](./workthrough.md) (개발 요약)
 
 ---
@@ -29,7 +29,9 @@ alpha-gen/
 ├── notifier.py              # 텔레그램
 ├── agent_logging.py         # logging + logs/alpha_gen.log
 ├── backtest.py              # 간이 백테스트 (python backtest.py)
-├── mock_state.json          # 런타임 상태 (Git 추적 가능, 실행 시 갱신)
+├── state_store.py           # ⭐ SQLite 상태 저장소 (mock_state.json 대체)
+├── migrate_to_sqlite.py     # JSON → DB 일회성 마이그레이션
+├── mock_state.json          # 레거시 — agent_state.db 전환 후 미사용
 ├── Dockerfile / docker-compose.yml
 ├── tests/                   # pytest 11개
 ├── README.md / workthrough.md / CONTEXT.md (본 문서)
@@ -186,6 +188,7 @@ docker compose up --build
 
 | 우선순위 | 이슈 | 메모 |
 |----------|------|------|
+| ✅ | `mock_state.json` → SQLite 전환 | `state_store.py`, `migrate_to_sqlite.py` 생성, `market_data.py` 패치 완료 |
 | 🔴 | Mock **장외 1회 종료** | `MOCK_CONTINUOUS=True`(기본)로 장외 루프 유지. 1회만 테스트하려면 `False` |
 | 🟡 | 미장 실주문 | `ENABLE_KIS_US_ORDERS=True` + KIS 해외 API 실계좌 검증 필요 |
 | 🟡 | 미장 잔고 | US Mock 체결 vs KIS 국내 잔고 불일치 (기존 구조) |
@@ -231,13 +234,30 @@ docker compose up --build
 
 ## 11. 다음 세션에서 바로 할 수 있는 작업
 
-1. **KIS 모의투자 실연동** — `MOCK_MODE=False` 후 `python scripts/kis_smoke_test.py`
-2. **대시보드 종목 차트** — mock_state `prices` / KIS 시세 연동 (랜덤 시뮬 제거)
-3. **Sharpe·성과 지표** — equity_history 기반 대시보드 메트릭
-4. **tenacity 재시도** — KIS API 견고성
-5. **미장 KIS 실주문** — `ENABLE_KIS_US_ORDERS=True` 실계좌 검증
+1. ~~**market_data.py SQLite 패치 적용**~~ ✅ 완료
+2. **KIS 모의투자 실연동** — `MOCK_MODE=False` 후 `python scripts/kis_smoke_test.py`
+3. **대시보드 종목 차트** — mock_state `prices` / KIS 시세 연동 (랜덤 시뮬 제거)
+4. **Sharpe·성과 지표** — equity_history 기반 대시보드 메트릭
+5. **tenacity 재시도** — KIS API 견고성
+6. **미장 KIS 실주문** — `ENABLE_KIS_US_ORDERS=True` 실계좌 검증
+7. **OHLCV + MACD/BB를 매수 조건에 연동** — `ohlcv.get_latest_signals()` → `main.py evaluate_buy_signal`
 
-**최근 완료 (2026-05-23)**: `MOCK_CONTINUOUS`, Plotly equity, `STOCK_TOPIC_MAP`, KIS E2E 스모크, `config.example.py`, pytest 18개
+**최근 완료 (2026-05-27)**:
+- Phase 5: `state_store.py` SQLite 전환, `market_data.py` 패치, `migrate_to_sqlite.py`
+- OHLCV 파이프라인: `ohlcv.py` (yfinance 일봉 → SQLite → MACD + 볼린저밴드)
+- 실전 전환: `order_registry.py` (idempotent 주문), `scripts/live_mode_checklist.py`
+
+### Phase 5 — SQLite 상태 저장소 전환 (2026-05-27)
+| 항목 | 내용 |
+|------|------|
+| `state_store.py` 신규 | `StateStore` 클래스 — SQLite WAL 모드, thread-safe, 7개 테이블 |
+| `migrate_to_sqlite.py` 신규 | `mock_state.json` → `agent_state.db` 일회성 변환 + 검증 + 자동 백업 |
+| `market_data.py` 패치 대상 | `save_agent_state`, `load_agent_state`, `add/remove/clear/is_bought_today`, `record_equity_snapshot` 교체 필요 |
+| 해결된 문제 | 파일 충돌(main+dashboard 동시 쓰기), `bought_today` 재시작 유실, `equity_history` 휘발, JSON 원자성 없음 |
+| 테스트 결과 | 전체 기능 테스트 통과 (sentiments 7개, prices 7개, bought_today CRUD, equity_history, trade_log) |
+
+**✅ market_data.py 패치 완료** — 2026-05-27 Claude Code 적용. pytest 31 passed, 3 skipped.
+
 
 ---
 
@@ -265,3 +285,38 @@ alpha-gen 프로젝트 이어서 작업해줘.
 ---
 
 *이 문서는 대화 세션 종료 시점의 스냅샷입니다. 코드 변경 후 섹션 3·8·10을 함께 업데이트하세요.*
+
+---
+
+## 14. Claude Code 인수인계 — SQLite 패치 즉시 적용
+
+**2026-05-27 claude.ai 세션에서 설계·테스트 완료, 파일 적용은 Claude Code로 진행.**
+
+### 준비된 파일
+- `state_store.py` — SQLite 저장소 클래스 (다운로드 후 프로젝트 루트에 배치)
+- `migrate_to_sqlite.py` — 마이그레이션 스크립트 (동일)
+- `market_data_patch.py` — 교체할 함수 전문 수록
+
+### Claude Code에게 전달할 프롬프트
+
+```
+alpha-gen 프로젝트 이어서 작업해줘.
+CONTEXT.md, README.md 읽고 현재 상태 파악 후 아래 작업 진행해줘.
+
+[작업] market_data.py SQLite 패치 적용
+- state_store.py 가 이미 프로젝트 루트에 있음
+- market_data_patch.py 참고해서 market_data.py 를 아래 순서로 수정:
+  1. 상단에 `from state_store import StateStore` + `_store = StateStore(config.DATA_DIR / "agent_state.db")` 추가
+  2. save_agent_state() 함수를 _store.save(...) 방식으로 교체
+  3. load_agent_state() 함수를 _store.load() 방식으로 교체
+  4. add_bought_today / remove_bought_today / clear_bought_today / is_bought_today 4개 함수에 _store 동기화 코드 추가
+  5. record_equity_snapshot() 함수에 _store.append_equity(...) 호출 추가
+  6. MOCK_STATE_FILE 상수 주석 처리
+- 수정 완료 후 python migrate_to_sqlite.py 실행
+- pytest tests/ -v 통과 확인
+```
+
+### 핵심 설계 원칙 (변경하면 안 되는 것)
+- `_apply_agent_fields(state: dict)` 함수는 그대로 재사용 — `_store.load()`의 반환 포맷이 기존 JSON과 동일하게 설계되어 있음
+- `mock_trade_log`, `equity_history`, `_shared_sentiments` 메모리 전역변수는 유지 (대시보드 실시간 참조용)
+- `save_mock_state()` / `load_mock_state()` 하위 호환 별칭 유지

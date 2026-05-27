@@ -10,11 +10,11 @@ export const OrdersPage = () => {
   return (
     <>
       <Helmet>
-        <title>{t("pages.orders.title")} · {t("app.title")}</title>
+        <title>
+          {t("pages.orders.title")} · {t("app.title")}
+        </title>
       </Helmet>
-      <section className="grid grid-single">
-        <OrdersPanel orders={data.orders.orders || []} />
-      </section>
+      <OrdersPanel orders={data.orders.orders || []} />
     </>
   );
 };

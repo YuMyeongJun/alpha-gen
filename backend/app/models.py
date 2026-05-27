@@ -46,6 +46,11 @@ class PromotionStageRequest(BaseModel):
     stage: Literal["mock", "paper", "shadow", "live_limited", "live_full"]
 
 
+class AdminActionRequest(BaseModel):
+    confirm: bool
+    reason: str = Field(min_length=2)
+
+
 class ApiEnvelope(BaseModel):
     status: Literal["ok", "error"]
     data: dict[str, Any]

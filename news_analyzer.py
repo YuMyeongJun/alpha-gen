@@ -492,3 +492,10 @@ def get_cache_status() -> list[dict]:
             "analyzed_at": cached["result"].get("analyzed_at", "-"),
         })
     return status
+
+
+def clear_sentiment_cache() -> int:
+    """감성 분석 TTL 캐시를 비우고 제거된 항목 수를 반환합니다."""
+    count = len(_cache)
+    _cache.clear()
+    return count

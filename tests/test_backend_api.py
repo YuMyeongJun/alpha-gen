@@ -188,3 +188,64 @@ def test_paper_stage_broker_sync_failure_emits_audit(tmp_path, monkeypatch):
     assert audit.status_code == 200
     events = audit.json()["events"]
     assert any(event["event_type"] == "position_sync_failed" for event in events)
+
+
+def test_safety_policy_includes_usage(tmp_path):
+    client = make_client(tmp_path)
+    safety = client.get("/api/safety")
+    usage = safety.json()["policy"]["usage"]
+    assert "orders_today" in usage
+    assert "live_orders_today" in usage
+    assert "live_orders_cycle" in usage
+
+
+def test_system_admin_endpoints(tmp_path, monkeypatch):
+    import news_analyzer
+
+    client = make_client(tmp_path)
+    payload = {"confirm": True, "reason": "테스트"}
+
+    cache = client.post("/api/system/cache/clear", json=payload)
+    assert cache.status_code == 200
+    assert cache.json()["cleared"] >= 0
+
+    news_analyzer._cache["test"] = {"expires_at": news_analyzer.datetime.now(news_analyzer.KST), "result": {}}
+    cache2 = client.post("/api/system/cache/clear", json=payload)
+    assert cache2.status_code == 200
+    assert cache2.json()["cleared"] >= 1
+
+    token = client.post("/api/system/kis/token/refresh", json=payload)
+    assert token.status_code == 200
+
+    order = client.post(
+        "/api/orders/paper",
+        json={"stock_code": "005930", "session": "KR", "side": "buy", "qty": 1},
+    )
+    assert order.status_code == 200
+
+    reset = client.post("/api/system/db/reset", json=payload)
+    assert reset.status_code == 200
+    assert "backup_path" in reset.json()
+
+    portfolio = client.get("/api/portfolio")
+    assert portfolio.json()["cash"] == 10_000_000
+
+    audit = client.get("/api/audit")
+    event_types = {event["event_type"] for event in audit.json()["events"]}
+    assert "cache_cleared" in event_types
+    assert "kis_token_refreshed" in event_types
+    assert "db_reset" in event_types
+
+
+def test_db_reset_blocked_when_emergency_stop(tmp_path):
+    client = make_client(tmp_path)
+    stop = client.post(
+        "/api/safety/emergency-stop",
+        json={"enabled": True, "reason": "DB reset 차단 테스트"},
+    )
+    assert stop.status_code == 200
+    reset = client.post(
+        "/api/system/db/reset",
+        json={"confirm": True, "reason": "긴급정지 중 reset 시도"},
+    )
+    assert reset.status_code == 400

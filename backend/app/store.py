@@ -455,6 +455,15 @@ class SQLiteStore:
     def set_paper_cash(self, cash: float) -> None:
         self.set_state("paper_cash", float(cash))
 
+    def reset_paper_trading_state(self, initial_cash: float | None = None) -> None:
+        """페이퍼 포지션·현금·일일 거래 가드를 초기화합니다. audit 이벤트는 유지합니다."""
+        cash = float(initial_cash if initial_cash is not None else config.MOCK_INITIAL_CASH)
+        with self._connect() as conn:
+            conn.execute("DELETE FROM paper_positions")
+            conn.commit()
+        self.set_paper_cash(cash)
+        self.clear_bought_today()
+
     def save_sentiments(self, results: dict[str, dict[str, Any]]) -> None:
         created_at = utc_now()
         with self._connect() as conn:

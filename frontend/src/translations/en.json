@@ -3,6 +3,11 @@
     "title": "Alpha-Gen Web",
     "subtitle": "Operations console for AI analytics, backtests, and paper trading"
   },
+  "brand": {
+    "name": "Trading Console",
+    "eyebrow": "ALPHA-GEN",
+    "consoleEyebrow": "ALPHA-GEN · OPS CONSOLE"
+  },
   "nav": {
     "label": "Ops console menu",
     "sectionTitle": "Menu",
@@ -14,6 +19,104 @@
     "backtests": "Backtests",
     "audit": "Audit",
     "system": "System"
+  },
+  "common": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "close": "Close",
+    "execute": "Execute",
+    "reset": "Reset",
+    "detail": "Details",
+    "filter": "Filter",
+    "none": "None",
+    "all": "All",
+    "countUnit": "",
+    "currencyUnit": "KRW",
+    "vsBaseline": "vs baseline",
+    "cashWeight": "Cash weight",
+    "healthy": "Healthy",
+    "configured": "Configured",
+    "notConfigured": "Not configured",
+    "active": "Active",
+    "inactive": "Inactive",
+    "cached": "Cached",
+    "expires": "Expires",
+    "packagesOk": "{{ok}}/{{total}} OK",
+    "requestDone": "Request completed.",
+    "requestFailed": "Request failed.",
+    "syncDone": "Broker position sync completed.",
+    "syncFailed": "Sync failed.",
+    "operatorConfirm": "Operator confirmation",
+    "languageKo": "한국어",
+    "languageEn": "English"
+  },
+  "domain": {
+    "worker": {
+      "running": "Running",
+      "stopped": "Stopped",
+      "estop": "E-Stop"
+    },
+    "workerStatus": {
+      "idle": "Idle",
+      "running": "Running",
+      "stopped": "Stopped",
+      "error": "Error"
+    },
+    "orderSide": {
+      "buy": "Buy",
+      "sell": "Sell",
+      "all": "All sides"
+    },
+    "orderStatus": {
+      "all": "All statuses",
+      "filled": "Filled",
+      "rejected": "Rejected",
+      "pending": "Pending"
+    },
+    "orderSession": {
+      "all": "All sessions"
+    },
+    "signalVerdict": {
+      "buy": "Buy candidate",
+      "sell": "Sell candidate",
+      "watch": "Watch",
+      "skip": "Skip"
+    },
+    "technical": {
+      "pass": "Pass",
+      "hold": "Hold"
+    },
+    "stage": {
+      "mock": "Mock",
+      "paper": "Paper",
+      "shadow": "Shadow",
+      "live_limited": "Live (limited)",
+      "live_full": "Live (full)"
+    },
+    "stagePill": {
+      "shadow": "Shadow",
+      "paper": "Paper",
+      "live": "Live"
+    },
+    "health": {
+      "ready": "Ready",
+      "degraded": "Degraded",
+      "unknown": "Unknown"
+    },
+    "auditLevel": {
+      "info": "Info",
+      "warn": "Warn",
+      "error": "Error"
+    },
+    "cycleStatus": {
+      "running": "Running",
+      "done": "Done"
+    },
+    "risk": {
+      "sleepMode": "Sleep mode",
+      "optionMode": "Option mode",
+      "dailyLossLimit": "Daily loss limit"
+    }
   },
   "pages": {
     "dashboard": {
@@ -41,6 +144,174 @@
       "title": "System status"
     }
   },
+  "panels": {
+    "dashboard": {
+      "title": "Trading operations at a glance",
+      "subtitle": "Key metrics and charts on the dashboard. See each menu for details.",
+      "totalAsset": "Total assets",
+      "cash": "Cash",
+      "workerStatus": "Worker status",
+      "riskStatus": "Risk status",
+      "dailyLimit": "Daily limit",
+      "quoteStaleness": "Quote",
+      "equityEyebrow": "Equity",
+      "equityTitle": "Equity trend",
+      "signalMixEyebrow": "Signal mix",
+      "signalMixTitle": "Signal distribution",
+      "signalTotal": "{{count}} total",
+      "latestCycleEyebrow": "Latest cycle",
+      "latestCycleTitle": "Latest cycle",
+      "cycleId": "Cycle ID",
+      "cycleCount": "Cycle count",
+      "executedAt": "Executed at",
+      "signalsGenerated": "Signals generated",
+      "signalsGeneratedDetail": "{{count}} (buy {{buy}})",
+      "ordersPlaced": "Orders placed",
+      "ordersPlacedDetail": "{{count}} ({{stage}})",
+      "nextRun": "Next run",
+      "periodAll": "All",
+      "period1D": "1D",
+      "period1W": "1W",
+      "period1M": "1M"
+    },
+    "orders": {
+      "title": "Orders",
+      "subtitle": "Recent orders and their status.",
+      "cardTitle": "Recent orders",
+      "eyebrow": "Orders",
+      "todayCount": "{{count}} today",
+      "empty": "No order history.",
+      "emptyFiltered": "No orders match the filter.",
+      "colId": "ID",
+      "colSymbol": "Symbol",
+      "colTime": "Time",
+      "colCode": "Code",
+      "colSide": "Side",
+      "colQty": "Qty",
+      "colPrice": "Fill price",
+      "colStatus": "Status",
+      "colNote": "Note"
+    },
+    "signals": {
+      "title": "Signals",
+      "subtitle": "Signals and scores from the latest cycle.",
+      "totalSignals": "Total signals",
+      "recentCycle": "Latest cycle",
+      "buyCandidates": "Buy candidates",
+      "sellCandidates": "Sell candidates",
+      "bullish": "Bullish",
+      "bearish": "Bearish",
+      "bearishNote": "Bearish outside watch",
+      "avgScore": "Avg score {{score}}",
+      "listTitle": "Signal list",
+      "eyebrow": "Latest cycle · {{count}}",
+      "empty": "No saved signals yet.",
+      "colSymbol": "Symbol",
+      "colVerdict": "Verdict",
+      "colScore": "Score",
+      "colPrice": "Price",
+      "colChange": "Change",
+      "colTechnical": "Technical",
+      "detailTitle": "Signal details",
+      "session": "Session",
+      "analyzedAt": "Analyzed at",
+      "sentimentScore": "Sentiment score",
+      "sentimentReason": "Sentiment reason",
+      "technicalVerdict": "Technical verdict",
+      "technicalReason": "Technical reason",
+      "rawData": "Raw data"
+    },
+    "system": {
+      "title": "System",
+      "subtitle": "Backend connectivity, data sources, and environment.",
+      "runtimeTitle": "Runtime",
+      "runtimeEyebrow": "Runtime",
+      "adaptersTitle": "Data sources",
+      "adaptersEyebrow": "Adapters",
+      "syncPositions": "Sync positions",
+      "operatingStage": "Operating stage",
+      "worker": "Worker",
+      "nextRun": "Next run",
+      "kisToken": "KIS token",
+      "packages": "Packages",
+      "mockMode": "Mock mode",
+      "missingConfig": "Missing config",
+      "dangerTitle": "Emergency actions",
+      "dangerEyebrow": "Danger zone",
+      "dangerNote": "These actions apply immediately and cannot be undone. Enter a reason and confirm.",
+      "reasonLabel": "Reason",
+      "clearCache": "Clear cache",
+      "refreshToken": "Refresh token",
+      "resetDb": "Snapshot & reset DB",
+      "diagnosticsJson": "View diagnostics JSON",
+      "confirmCacheTitle": "Clear sentiment cache?",
+      "confirmCacheBody": "News sentiment TTL cache will be cleared. The next analysis may call APIs again.",
+      "confirmTokenTitle": "Refresh KIS OAuth token?",
+      "confirmTokenBody": "Clears the token cache and requests a new token. KIS credentials required.",
+      "confirmDbTitle": "Snapshot and reset DB?",
+      "confirmDbBody": "Backs up the DB file then resets paper positions and cash. Audit events are kept. Rejected in live stages."
+    },
+    "portfolio": {
+      "title": "Portfolio",
+      "subtitle": "Current positions and allocation.",
+      "evaluated": "Total value",
+      "cash": "Cash",
+      "holdings": "Holdings",
+      "unrealizedPnl": "Unrealized P&L",
+      "positionsTitle": "Holdings",
+      "positionsEyebrow": "Positions",
+      "currentCount": "{{count}} current",
+      "empty": "No open positions.",
+      "vsBaseline": "{{pct}} vs baseline",
+      "weight": "{{pct}}% weight",
+      "prevDayHoldings": "Prev session {{count}}",
+      "colName": "Symbol",
+      "colCode": "Code",
+      "colSession": "Session",
+      "colQty": "Qty",
+      "colAvg": "Avg",
+      "colPrice": "Price",
+      "colPnl": "P&L %",
+      "emptyHint": "Positions appear here after the worker runs and orders fill.",
+      "sleepActive": "— Active",
+      "sleepInactive": "— Sleep mode",
+      "unitCount": ""
+    },
+    "audit": {
+      "title": "Audit log",
+      "subtitle": "System events and operator actions.",
+      "empty": "No audit events yet.",
+      "colTime": "Time",
+      "colLevel": "Level",
+      "colSource": "Source",
+      "colMessage": "Message"
+    },
+    "backtests": {
+      "title": "Backtests",
+      "subtitle": "Recent strategy backtest results.",
+      "runButton": "Run latest strategy backtest",
+      "recentCount": "Last {{count}} runs",
+      "latestReturn": "Latest return {{pct}}",
+      "avgWinRate": "Avg win rate {{pct}}%",
+      "empty": "No backtest history.",
+      "colTime": "Run time",
+      "colReturn": "Return",
+      "colWinRate": "Win rate",
+      "colTrades": "Trades",
+      "colPnl": "Total P&L",
+      "report": "Report",
+      "reportTitle": "Backtest report",
+      "runId": "Run ID",
+      "parametersSummary": "Parameters & summary"
+    }
+  },
+  "chart": {
+    "empty": "No equity history to display yet.",
+    "baseline": "Baseline (initial cash)",
+    "totalAsset": "Total assets",
+    "drawdown": "Drawdown period",
+    "current": "Now"
+  },
   "ops": {
     "syncPending": "Waiting to sync",
     "syncing": "Syncing",
@@ -51,6 +322,7 @@
     "autoRefresh": "Auto refresh",
     "nextRun": "Next run",
     "lastSync": "Last sync",
+    "refresh": "Refresh",
     "requestFailed": "Request failed"
   },
   "sidebar": {
@@ -87,8 +359,8 @@
     "operatingStage": "Operating stage",
     "autoOrders": "Auto orders",
     "liveTrading": "Live trading",
-    "enabled": "enabled",
-    "disabled": "disabled",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
     "emergencyStop": "Emergency stop",
     "active": "Active",
     "inactive": "Off",
@@ -113,6 +385,16 @@
     "side": "Side",
     "qty": "Qty",
     "submitPaperOrder": "Place paper order",
-    "paperOrderDone": "Paper order submitted."
+    "paperOrderDone": "Paper order submitted.",
+    "operator": "Operator",
+    "risk": "Risk",
+    "estopConfirmTitle": "Enable emergency stop?",
+    "estopConfirmBody": "All pending orders will be cancelled and the worker will stop. No new orders until disabled.",
+    "validation": {
+      "stopReasonRequired": "Enter an emergency stop reason.",
+      "stopReasonMin": "Reason must be at least 2 characters.",
+      "symbolRequired": "Enter a symbol.",
+      "qtyNumber": "Quantity must be a number."
+    }
   }
 }

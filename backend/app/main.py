@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 import config
 
 from .models import (
+    AdminActionRequest,
     AgentCycleRequest,
     AnalysisRequest,
     BacktestRequest,
@@ -19,11 +20,11 @@ from .models import (
     PromotionStageRequest,
     WorkerRequest,
 )
-from .services import TradingSafetyError, build_service_bundle
+from .services import SystemAdminService, TradingSafetyError, build_service_bundle
 
 
-def create_app(db_path: str | None = None, bootstrap_legacy: bool = True) -> FastAPI:
-    bundle = build_service_bundle(db_path=db_path, bootstrap_legacy=bootstrap_legacy)
+def create_app(db_path: str | None = None, bootstrap_legacy: bool = True, auto_resume_worker: bool = True) -> FastAPI:
+    bundle = build_service_bundle(db_path=db_path, bootstrap_legacy=bootstrap_legacy, auto_resume_worker=auto_resume_worker)
     store = bundle.store
     risk_service = bundle.risk_service
     safety_service = bundle.safety_service
@@ -33,6 +34,7 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True) -> Fas
     diagnostics_service = bundle.diagnostics_service
     agent_service = bundle.agent_service
     worker = bundle.worker
+    system_admin = SystemAdminService(store, safety_service, worker)
 
     app = FastAPI(
         title="Alpha-Gen Web",
@@ -200,6 +202,30 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True) -> Fas
     @app.post("/api/agent/worker/stop")
     async def worker_stop() -> dict:
         return worker.stop()
+
+    @app.post("/api/system/cache/clear")
+    async def clear_system_cache(payload: AdminActionRequest) -> dict:
+        if not payload.confirm:
+            raise HTTPException(status_code=400, detail="confirm must be true")
+        return system_admin.clear_sentiment_cache(reason=payload.reason)
+
+    @app.post("/api/system/kis/token/refresh")
+    async def refresh_kis_token(payload: AdminActionRequest) -> dict:
+        if not payload.confirm:
+            raise HTTPException(status_code=400, detail="confirm must be true")
+        try:
+            return system_admin.refresh_kis_token(reason=payload.reason)
+        except TradingSafetyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/system/db/reset")
+    async def reset_system_db(payload: AdminActionRequest) -> dict:
+        if not payload.confirm:
+            raise HTTPException(status_code=400, detail="confirm must be true")
+        try:
+            return system_admin.reset_database(reason=payload.reason)
+        except TradingSafetyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if index_path is not None:
 
