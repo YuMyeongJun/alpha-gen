@@ -127,6 +127,12 @@ class RiskService:
         self._sync_from_store()
         return not risk_manager.SLEEP_MODE
 
+    def exit_sleep_mode(self) -> dict[str, Any]:
+        """휴면 모드 수동 해제"""
+        risk_manager.exit_sleep_mode()
+        self._sync_to_store()
+        return self.get_summary()
+
 
 class SafetyService:
     LIVE_STAGES = {"live_limited", "live_full"}
@@ -644,8 +650,7 @@ class TradingService:
     def sync_live_positions_from_broker(self, session: str, *, source: str = "portfolio") -> None:
         if not self._should_sync_broker_positions():
             return
-        if session == "US" and not config.ENABLE_KIS_US_ORDERS:
-            return
+        # ENABLE_KIS_US_ORDERS=False 여도 잔고 읽기는 허용 (주문 차단 ≠ 포지션 조회 차단)
         if self.safety_service.execution_mode() == "paper" and source not in {"worker", "manual"}:
             return
 
@@ -1111,6 +1116,27 @@ class TradingService:
         execution_mode = self.safety_service.execution_mode()
         for target in stop_targets:
             metadata = {"source": "stop_loss", "loss_pct": target["loss_pct"]}
+
+            # US 포지션 손절: 직접 주문 불가 → 텔레그램으로 매도 안내 (DB는 paper로 추적)
+            # 손절은 긴급 상황이므로 dedup 없이 매 사이클마다 알림
+            if target.get("session") == "US":
+                try:
+                    import notifier
+                    eval_krw = float(target["eval_price"])
+                    price_usd = eval_krw / 1350
+                    notifier.notify_us_sell_recommendation(
+                        stock_name=target["name"],
+                        ticker=target["code"],
+                        price_usd=price_usd,
+                        held_qty=int(target["qty"]),
+                        pnl_pct=float(target["loss_pct"]),
+                        reason=f"손절 기준({config.STOP_LOSS_PCT * 100:.0f}%) 도달 — 즉시 매도 권고",
+                        trigger="stop_loss",
+                        usd_rate=1350.0,
+                    )
+                except Exception:
+                    pass
+
             if execution_mode == "shadow":
                 executed.append(
                     self.place_shadow_order(
@@ -1211,6 +1237,187 @@ class TradingService:
                     )
                 )
         return closed
+
+    def import_manual_position(
+        self,
+        *,
+        stock_code: str,
+        session: str,
+        qty: int,
+        avg_price: int,
+        stock_name: str = "",
+        reason: str = "manual_import",
+    ) -> dict[str, Any]:
+        """외부(한투 앱 등)에서 보유 중인 포지션을 시스템에 수동 등록합니다."""
+        all_stocks = {**config.KR_STOCKS, **config.US_STOCKS}
+        resolved_name = stock_name or all_stocks.get(stock_code, {}).get("name", stock_code)
+
+        try:
+            last_price = float(market_data.get_price(stock_code, session).get("current_price", avg_price))
+        except Exception:
+            last_price = float(avg_price)
+
+        self.store.upsert_position(
+            session=session,
+            stock_code=stock_code,
+            stock_name=resolved_name,
+            qty=qty,
+            avg_price=float(avg_price),
+            last_price=last_price,
+        )
+        self.store.add_audit_event(
+            scope="trading",
+            event_type="position_imported",
+            severity="info",
+            message=f"수동 포지션 등록: {resolved_name}({stock_code}) {qty}주 @{avg_price:,}원",
+            session=session,
+            stock_code=stock_code,
+            payload={
+                "stock_code": stock_code,
+                "stock_name": resolved_name,
+                "session": session,
+                "qty": qty,
+                "avg_price": avg_price,
+                "last_price": last_price,
+                "reason": reason,
+            },
+        )
+        return {
+            "imported": True,
+            "stock_code": stock_code,
+            "stock_name": resolved_name,
+            "session": session,
+            "qty": qty,
+            "avg_price": avg_price,
+            "last_price": last_price,
+        }
+
+    def place_manual_order(
+        self,
+        *,
+        stock_code: str,
+        session: str,
+        side: str,
+        qty: int,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        UI에서 사용자가 직접 실행하는 매수/매도.
+        - 긴급정지만 체크 (리스크 휴면 모드·자동매매 안전장치 무시)
+        - KIS 자격증명이 있으면 실제 KIS API 호출 시도
+        - KIS 미실행 또는 실패 시 DB 추적(페이퍼)으로 폴백
+        - KIS 실행 성공 후 잔고 재동기화
+        """
+        if qty <= 0:
+            raise ValueError("수량은 1 이상이어야 합니다.")
+        if session not in {"KR", "US"}:
+            raise ValueError("세션은 KR 또는 US 여야 합니다.")
+
+        # 긴급정지만 체크 — 리스크 휴면 모드는 수동 주문에서 적용 안 함
+        policy = self.safety_service.get_policy()
+        stop_state = policy["emergency_stop"]
+        if stop_state["enabled"]:
+            raise TradingSafetyError(stop_state.get("reason") or "긴급 정지 상태입니다.")
+
+        quote = market_data.get_price(stock_code, session)
+        price = float(quote["current_price"])
+        stock_name = self._stock_name(stock_code, session)
+
+        broker_executed = False
+        broker_msg = "paper"
+
+        # KIS 실행 시도 (Mock 아니고 KIS 설정된 경우)
+        if not config.MOCK_MODE and config.KIS_CREDENTIALS_CONFIGURED:
+            import order_engine
+            try:
+                # US 종목: yf_get_price에서 이미 받은 current_usd를 그대로 사용해
+                # _us_limit_price()의 재조회(장 마감 시 None 리턴) 문제를 우회한다.
+                us_limit: str | None = None
+                if session == "US":
+                    cur_usd = quote.get("current_usd")
+                    if cur_usd and cur_usd > 0:
+                        margin = 1.02 if side == "buy" else 0.98
+                        us_limit = f"{cur_usd * margin:.4f}"
+
+                if side == "buy":
+                    ok, msg = (
+                        order_engine.kis_buy(stock_code, qty)
+                        if session == "KR"
+                        else order_engine.kis_us_buy(stock_code, qty, limit_price=us_limit)
+                    )
+                else:
+                    ok, msg = (
+                        order_engine.kis_sell(stock_code, qty)
+                        if session == "KR"
+                        else order_engine.kis_us_sell(stock_code, qty, limit_price=us_limit)
+                    )
+                broker_executed = ok
+                broker_msg = msg
+            except Exception as exc:
+                broker_msg = f"KIS 에러: {exc}"
+
+        # DB 업데이트
+        if broker_executed:
+            # KIS 성공 → 브로커에서 실제 잔고 동기화
+            try:
+                self.sync_live_positions_from_broker(session, source="post_manual_order")
+            except Exception:
+                pass
+        else:
+            # KIS 미실행 / 실패 → 페이퍼 추적으로 폴백
+            position = self.store.get_position(session, stock_code)
+            if side == "buy":
+                current_qty = int(position["qty"]) if position else 0
+                current_avg = float(position["avg_price"]) if position else 0.0
+                total_qty = current_qty + qty
+                avg_price = ((current_avg * current_qty) + (price * qty)) / total_qty
+                self.store.set_paper_cash(self.store.get_paper_cash() - price * qty)
+                self.store.upsert_position(session, stock_code, stock_name, total_qty, avg_price, price)
+            else:
+                if position is None:
+                    raise ValueError("매도할 보유 수량이 없습니다.")
+                held_qty = int(position["qty"])
+                if held_qty < qty:
+                    raise ValueError(f"보유 수량 부족: 보유 {held_qty}주 / 요청 {qty}주")
+                avg_price = float(position["avg_price"])
+                remaining = held_qty - qty
+                self.store.set_paper_cash(self.store.get_paper_cash() + price * qty)
+                if remaining == 0:
+                    self.store.remove_position(session, stock_code)
+                else:
+                    self.store.upsert_position(session, stock_code, stock_name, remaining, avg_price, price)
+
+        self.store.add_audit_event(
+            scope="trading",
+            event_type="manual_order",
+            severity="info",
+            message=(
+                f"수동 {'KIS' if broker_executed else '페이퍼'} {side}: "
+                f"{stock_name}({stock_code}) {qty}주 @{int(price):,}원"
+            ),
+            session=session,
+            stock_code=stock_code,
+            payload={
+                "broker_executed": broker_executed,
+                "broker_msg": broker_msg,
+                "price": price,
+                "qty": qty,
+                "side": side,
+                **(metadata or {}),
+            },
+        )
+
+        return {
+            "status": "filled",
+            "broker_executed": broker_executed,
+            "broker_msg": broker_msg,
+            "stock_code": stock_code,
+            "stock_name": stock_name,
+            "session": session,
+            "side": side,
+            "qty": qty,
+            "price": price,
+        }
 
     def get_portfolio_snapshot(self) -> dict[str, Any]:
         for session in ("KR", "US"):
@@ -1374,6 +1581,139 @@ class AgentService:
         self.risk_service = risk_service
         self.safety_service = safety_service
 
+    def _notify_us_sell_signals(self, us_signals: list[dict[str, Any]]) -> list[str]:
+        """보유 중인 US 종목에 매도 시그널 발생 시 텔레그램 알림."""
+        import notifier
+
+        notified: list[str] = []
+        # 보유 포지션 맵 (stock_code → position)
+        held = {p["stock_code"]: p for p in self.store.list_positions(session="US")}
+        if not held:
+            return notified
+
+        for signal in us_signals:
+            code = signal["stock_code"]
+            if code not in held:
+                continue  # 보유하지 않은 종목은 스킵
+            score = float(signal.get("sentiment_score", 0))
+            if score >= 0:
+                continue  # 양수 감성이면 스킵
+
+            notify_key = f"sell:{code}"
+            if self.store.has_notified_today(notify_key):
+                continue
+
+            position = held[code]
+            avg_price = float(position["avg_price"])
+            current_price = float(signal["current_price"])
+            held_qty = int(position["qty"])
+            pnl_pct = (current_price - avg_price) / avg_price * 100 if avg_price > 0 else 0.0
+            price_usd = float(signal.get("quote", {}).get("current_usd") or current_price / 1350)
+            usd_rate = current_price / price_usd if price_usd > 0 else 1350.0
+
+            try:
+                notifier.notify_us_sell_recommendation(
+                    stock_name=signal["stock_name"],
+                    ticker=code,
+                    price_usd=price_usd,
+                    held_qty=held_qty,
+                    pnl_pct=pnl_pct,
+                    reason=signal.get("sentiment_reason") or "",
+                    technical=signal.get("technical"),
+                    trigger="signal",
+                    usd_rate=usd_rate,
+                )
+                self.store.mark_notified_today(notify_key)
+                notified.append(code)
+                self.store.add_audit_event(
+                    scope="agent",
+                    event_type="us_sell_notified",
+                    severity="info",
+                    message=f"미장 매도 추천 텔레그램 발송: {signal['stock_name']}({code})",
+                    session="US",
+                    stock_code=code,
+                    payload={
+                        "ticker": code,
+                        "price_usd": price_usd,
+                        "held_qty": held_qty,
+                        "pnl_pct": round(pnl_pct, 2),
+                        "sentiment_score": score,
+                    },
+                )
+            except Exception as exc:
+                self.store.add_audit_event(
+                    scope="agent",
+                    event_type="us_sell_notify_failed",
+                    severity="warning",
+                    message=f"{code} 매도 알림 실패: {exc}",
+                    session="US",
+                    stock_code=code,
+                )
+        return notified
+
+    def _notify_us_buy_signals(self, signals: list[dict[str, Any]]) -> list[str]:
+        """US 매수 추천 시그널을 텔레그램으로 발송. 오늘 이미 발송한 종목은 건너뜀."""
+        import notifier
+
+        notified: list[str] = []
+        for signal in signals:
+            if not signal.get("buy_signal"):
+                continue
+            if self.store.has_notified_today(signal["stock_code"]):
+                continue
+            total_asset = int(self.risk_service.get_total_asset())
+            suggested_qty = risk_manager.get_position_size(
+                total_asset,
+                signal["sentiment_score"],
+                int(signal["current_price"]),
+            )
+            exchange = config.US_STOCKS.get(signal["stock_code"], {}).get("exchange", "NASD")
+            # current_usd가 있으면 그대로 사용, 없으면 원화 → 달러 환산 (대략 1350)
+            price_usd = float(
+                signal.get("quote", {}).get("current_usd")
+                or signal["current_price"] / 1350
+            )
+            current_krw = float(signal["current_price"])
+            usd_rate = current_krw / price_usd if price_usd > 0 else 1350.0
+            try:
+                notifier.notify_us_buy_recommendation(
+                    stock_name=signal["stock_name"],
+                    ticker=signal["stock_code"],
+                    price_usd=price_usd,
+                    suggested_qty=max(suggested_qty, 1),
+                    sentiment_score=signal["sentiment_score"],
+                    sentiment_reason=signal.get("sentiment_reason") or "",
+                    technical=signal.get("technical"),
+                    exchange=exchange,
+                    usd_rate=usd_rate,
+                )
+                self.store.mark_notified_today(signal["stock_code"])
+                notified.append(signal["stock_code"])
+                self.store.add_audit_event(
+                    scope="agent",
+                    event_type="us_buy_notified",
+                    severity="info",
+                    message=f"미장 매수 추천 텔레그램 발송: {signal['stock_name']}({signal['stock_code']})",
+                    session="US",
+                    stock_code=signal["stock_code"],
+                    payload={
+                        "ticker": signal["stock_code"],
+                        "price_usd": price_usd,
+                        "suggested_qty": max(suggested_qty, 1),
+                        "sentiment_score": signal["sentiment_score"],
+                    },
+                )
+            except Exception as exc:
+                self.store.add_audit_event(
+                    scope="agent",
+                    event_type="us_notify_failed",
+                    severity="warning",
+                    message=f"{signal['stock_code']} 텔레그램 발송 실패: {exc}",
+                    session="US",
+                    stock_code=signal["stock_code"],
+                )
+        return notified
+
     def run_cycle(self, *, session: str = "AUTO", force_refresh: bool = False, place_orders: bool = True) -> dict[str, Any]:
         resolved = resolve_session(session)
         cycle_id = f"{resolved}:{utc_timestamp()}"
@@ -1398,7 +1738,15 @@ class AgentService:
             self.trading_service.sync_live_positions_from_broker(resolved, source="worker")
         analysis = self.analytics_service.analyze_market(session=resolved, force_refresh=force_refresh)
         stop_loss_orders = self.trading_service.run_stop_loss_cycle()
-        executed_orders = []
+
+        # 시그널을 KR / US 로 분리
+        all_signals = analysis["signals"]
+        kr_signals = [s for s in all_signals if s["session"] == "KR"]
+        us_signals = [s for s in all_signals if s["session"] == "US"]
+
+        executed_orders: list[dict[str, Any]] = []
+        us_notified: list[str] = []
+
         should_place_orders = place_orders and self.safety_service.get_policy()["auto_orders_enabled"]
         if place_orders and not should_place_orders:
             self.store.add_audit_event(
@@ -1409,35 +1757,35 @@ class AgentService:
                 session=resolved,
                 payload={"cycle_id": cycle_id, "requested": place_orders, "policy": self.safety_service.get_policy()},
             )
-        if should_place_orders:
-            if resolved == "BOTH":
-                # 시장 전체 분석 시 시그널별 session으로 분리 라우팅
-                from itertools import groupby
-                for sig_session, grp in groupby(
-                    sorted(analysis["signals"], key=lambda s: s["session"]),
-                    key=lambda s: s["session"],
-                ):
-                    executed_orders.extend(
-                        self.trading_service.auto_buy_from_signals(list(grp), sig_session)
-                    )
-            else:
-                executed_orders = self.trading_service.auto_buy_from_signals(analysis["signals"], resolved)
+
+        if should_place_orders and kr_signals:
+            # 국장(KR): 시스템이 자동 매수
+            executed_orders = self.trading_service.auto_buy_from_signals(kr_signals, "KR")
+
+        if place_orders and us_signals:
+            # 미장(US): 시스템이 주문 대신 텔레그램으로 매수/매도 추천 발송
+            us_notified = self._notify_us_buy_signals(us_signals)
+            us_notified += self._notify_us_sell_signals(us_signals)
+
         risk_summary = self.risk_service.update_drawdown()
+        buy_candidate_count = sum(1 for s in all_signals if s["buy_signal"])
         cycle_summary = {
             "cycle_id": cycle_id,
             "last_cycle_at": utc_timestamp(),
             "last_session": resolved,
-            "last_signal_count": len(analysis["signals"]),
-            "last_buy_candidate_count": sum(1 for signal in analysis["signals"] if signal["buy_signal"]),
+            "last_signal_count": len(all_signals),
+            "last_buy_candidate_count": buy_candidate_count,
             "last_order_count": len(executed_orders),
             "last_stop_loss_count": len(stop_loss_orders),
+            "last_us_notified_count": len(us_notified),
             "last_total_asset": self.risk_service.get_total_asset(),
             "last_sleep_mode": bool(risk_summary.get("sleep_mode", False)),
             "operating_stage": self.safety_service.get_stage(),
             "last_summary": (
-                f"{resolved} 세션 · 시그널 {len(analysis['signals'])}건 · "
-                f"매수후보 {sum(1 for signal in analysis['signals'] if signal['buy_signal'])}건 · "
-                f"주문 {len(executed_orders)}건"
+                f"{resolved} 세션 · 시그널 {len(all_signals)}건 · "
+                f"매수후보 {buy_candidate_count}건 · "
+                f"국장주문 {len(executed_orders)}건 · "
+                f"미장알림 {len(us_notified)}건"
             ),
         }
         worker_state = self.store.get_state("worker_state", {}) or {}
@@ -1456,6 +1804,7 @@ class AgentService:
             "analysis": analysis,
             "executed_orders": executed_orders,
             "stop_loss_orders": stop_loss_orders,
+            "us_notified": us_notified,
             "risk": risk_summary,
             "portfolio": self.trading_service.get_portfolio_snapshot(),
             "cycle_summary": cycle_summary,

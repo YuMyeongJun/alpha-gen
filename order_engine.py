@@ -77,9 +77,47 @@ def _us_exchange(ticker: str) -> str:
     return config.US_STOCKS.get(ticker, {}).get("exchange", "NASD")
 
 
-def kis_us_buy(ticker: str, qty: int) -> tuple[bool, str]:
-    """KIS 해외주식 시장가 매수"""
+def _us_limit_price(ticker: str, side: str) -> str:
+    """
+    KIS 해외주식은 순수 시장가 미지원 — 지정가(ORD_DVSN=00)로 처리.
+    현재가 기준으로 매수는 +2%, 매도는 -2% 여유를 두어 즉시 체결 유도.
+    fast_info.last_price가 None일 수 있으므로(장 마감 후) history()로 폴백.
+    """
+    try:
+        import yfinance as yf
+        stock = yf.Ticker(ticker)
+        price = stock.fast_info.last_price  # 장중에는 빠름
+        if price is None or price <= 0:
+            # 장 마감 후 fallback — history 마지막 종가
+            hist = stock.history(period="5d", interval="1d")
+            if hist.empty:
+                return "0"
+            price = float(hist["Close"].iloc[-1])
+        return f"{price * 1.02:.4f}" if side == "buy" else f"{price * 0.98:.4f}"
+    except Exception:
+        return "0"
+
+
+def _kis_us_response_check(res: requests.Response) -> tuple[bool, str]:
+    """KIS 응답 파싱 — 500 에러 시 body 메시지 추출"""
+    try:
+        body = res.json()
+        if res.status_code == 200 and body.get("rt_cd") == "0":
+            return True, body.get("msg1", "성공")
+        msg = body.get("msg1") or body.get("msg_cd") or f"HTTP {res.status_code}"
+        return False, f"KIS 거부: {msg.strip()}"
+    except Exception:
+        return False, f"KIS HTTP {res.status_code}: {res.text[:200]}"
+
+
+def kis_us_buy(ticker: str, qty: int, limit_price: str | None = None) -> tuple[bool, str]:
+    """KIS 해외주식 지정가 매수 (현재가 +2% → 즉시 체결 유도).
+    limit_price를 직접 전달하면 yfinance 재조회 생략 (place_manual_order 등에서 사용).
+    """
     tr_id = "TTTS1002U" if config.IS_REAL_TRADING else "VTTS1002U"
+    price = limit_price if (limit_price and limit_price != "0") else _us_limit_price(ticker, "buy")
+    if price == "0":
+        return False, f"KIS 해외 매수 실패: {ticker} 가격 조회 불가"
     try:
         res = requests.post(
             f"{config.KIS_URL}/uapi/overseas-stock/v1/trading/order",
@@ -90,22 +128,25 @@ def kis_us_buy(ticker: str, qty: int) -> tuple[bool, str]:
                 "OVRS_EXCG_CD": _us_exchange(ticker),
                 "PDNO": ticker,
                 "ORD_QTY": str(qty),
-                "OVRS_ORD_UNPR": "0",
+                "OVRS_ORD_UNPR": price,
                 "ORD_DVSN": "00",
+                "ORD_SVR_DVSN": "",
             },
             timeout=15,
         )
-        res.raise_for_status()
-        result = res.json()
-        ok = result.get("rt_cd") == "0"
-        return ok, result.get("msg1", "성공")
+        return _kis_us_response_check(res)
     except Exception as e:
         return False, f"KIS 해외 매수 에러: {e}"
 
 
-def kis_us_sell(ticker: str, qty: int) -> tuple[bool, str]:
-    """KIS 해외주식 시장가 매도"""
+def kis_us_sell(ticker: str, qty: int, limit_price: str | None = None) -> tuple[bool, str]:
+    """KIS 해외주식 지정가 매도 (현재가 -2% → 즉시 체결 유도).
+    limit_price를 직접 전달하면 yfinance 재조회 생략 (place_manual_order 등에서 사용).
+    """
     tr_id = "TTTS1001U" if config.IS_REAL_TRADING else "VTTS1001U"
+    price = limit_price if (limit_price and limit_price != "0") else _us_limit_price(ticker, "sell")
+    if price == "0":
+        return False, f"KIS 해외 매도 실패: {ticker} 가격 조회 불가"
     try:
         res = requests.post(
             f"{config.KIS_URL}/uapi/overseas-stock/v1/trading/order",
@@ -116,16 +157,14 @@ def kis_us_sell(ticker: str, qty: int) -> tuple[bool, str]:
                 "OVRS_EXCG_CD": _us_exchange(ticker),
                 "PDNO": ticker,
                 "ORD_QTY": str(qty),
-                "OVRS_ORD_UNPR": "0",
+                "OVRS_ORD_UNPR": price,
                 "ORD_DVSN": "00",
                 "SLL_TYPE": "00",
+                "ORD_SVR_DVSN": "",
             },
             timeout=15,
         )
-        res.raise_for_status()
-        result = res.json()
-        ok = result.get("rt_cd") == "0"
-        return ok, result.get("msg1", "성공")
+        return _kis_us_response_check(res)
     except Exception as e:
         return False, f"KIS 해외 매도 에러: {e}"
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 import { Badge, Card, ConfirmDialog, Icon, PageHeader } from "@/components/common";
@@ -6,6 +7,8 @@ import { useSystemMutations } from "@/hooks/client/system/useSystemMutations";
 import { useDomainLabels } from "@/hooks/useDomainLabels";
 import type { IDashboardBundleRes, ISafetyPolicyRes } from "@/models/interface/res/IDashboardRes";
 import { badgeClassByStatus, formatDateTime, formatRelative } from "@/utils/format";
+
+type ImportForm = { stock_code: string; session: "KR" | "US"; qty: number; avg_price: number; stock_name: string };
 
 export interface ISystemPanelProps {
   system: IDashboardBundleRes["system"];
@@ -26,7 +29,7 @@ function formatBytes(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-type DangerAction = "cache" | "token" | "db" | null;
+type DangerAction = "cache" | "token" | "db" | "equity" | null;
 
 export const SystemPanel = ({ system, policy }: ISystemPanelProps) => {
   const { t } = useTranslation();
@@ -43,6 +46,9 @@ export const SystemPanel = ({ system, policy }: ISystemPanelProps) => {
   const mutations = useSystemMutations();
   const [dangerAction, setDangerAction] = useState<DangerAction>(null);
   const [adminReason, setAdminReason] = useState(t("common.operatorConfirm"));
+  const importForm = useForm<ImportForm>({
+    defaultValues: { stock_code: "", session: "KR", qty: 1, avg_price: 0, stock_name: "" },
+  });
 
   const runAdmin = async (action: DangerAction) => {
     if (!action) return;
@@ -51,6 +57,7 @@ export const SystemPanel = ({ system, policy }: ISystemPanelProps) => {
       if (action === "cache") await mutations.clearCache.mutateAsync(payload);
       if (action === "token") await mutations.refreshKisToken.mutateAsync(payload);
       if (action === "db") await mutations.resetDatabase.mutateAsync(payload);
+      if (action === "equity") await mutations.clearEquity.mutateAsync(payload);
       toast.success(t("common.requestDone"));
       setDangerAction(null);
     } catch (error) {
@@ -80,6 +87,10 @@ export const SystemPanel = ({ system, policy }: ISystemPanelProps) => {
       title: t("panels.system.confirmDbTitle"),
       body: t("panels.system.confirmDbBody"),
       danger: true,
+    },
+    equity: {
+      title: "자산 추이 기록 초기화",
+      body: "모의 거래 시작 시 생성된 가라 데이터를 포함, 차트에 표시되는 자산 추이 기록 전체를 삭제합니다. 실제 잔고·포지션은 영향 없습니다.",
     },
   };
 
@@ -153,6 +164,64 @@ export const SystemPanel = ({ system, policy }: ISystemPanelProps) => {
         </Card>
       </div>
 
+      {/* 수동 포지션 등록 */}
+      <Card title="외부 포지션 등록" eyebrow="IMPORT POSITION" style={{ marginBottom: 14 }}>
+        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+          한투 앱 등 외부에서 직접 매수한 포지션을 시스템에 등록합니다.
+        </p>
+        <form
+          onSubmit={importForm.handleSubmit(async (values) => {
+            try {
+              await mutations.importPosition.mutateAsync({
+                stock_code: values.stock_code.trim().toUpperCase(),
+                session: values.session,
+                qty: Number(values.qty),
+                avg_price: Number(values.avg_price),
+                stock_name: values.stock_name.trim(),
+              });
+              toast.success(`${values.stock_code} ${values.qty}주 등록 완료`);
+              importForm.reset({ stock_code: "", session: "KR", qty: 1, avg_price: 0, stock_name: "" });
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "등록 실패");
+            }
+          })}
+        >
+          <div className="grid-2" style={{ gap: 10, marginBottom: 10 }}>
+            <div className="field">
+              <span className="field__label">종목코드</span>
+              <input className="input" placeholder="005930 / AAPL" {...importForm.register("stock_code", { required: true })} />
+            </div>
+            <div className="field">
+              <span className="field__label">종목명 (선택)</span>
+              <input className="input" placeholder="자동인식됩니다" {...importForm.register("stock_name")} />
+            </div>
+            <div className="field">
+              <span className="field__label">세션</span>
+              <select className="select" {...importForm.register("session")}>
+                <option value="KR">KR (국내)</option>
+                <option value="US">US (미국)</option>
+              </select>
+            </div>
+            <div className="field">
+              <span className="field__label">수량 (주)</span>
+              <input className="input" type="number" min={1} {...importForm.register("qty", { valueAsNumber: true, min: 1 })} />
+            </div>
+            <div className="field" style={{ gridColumn: "1/-1" }}>
+              <span className="field__label">평균 매입가 (원)</span>
+              <input className="input" type="number" min={1} {...importForm.register("avg_price", { valueAsNumber: true, min: 1 })} />
+            </div>
+          </div>
+          <button
+            type="submit"
+            className="btn btn--accent"
+            disabled={mutations.importPosition.isPending}
+          >
+            {mutations.importPosition.isPending ? <Icon name="refresh" size={13} className="spinning" /> : null}
+            포지션 등록
+          </button>
+        </form>
+      </Card>
+
       <Card title={t("panels.system.dangerTitle")} eyebrow={t("panels.system.dangerEyebrow")}>
         <p className="muted" style={{ marginTop: 0 }}>
           {t("panels.system.dangerNote")}
@@ -179,6 +248,14 @@ export const SystemPanel = ({ system, policy }: ISystemPanelProps) => {
           >
             {mutations.refreshKisToken.isPending ? <Icon name="refresh" size={13} className="spinning" /> : null}
             {t("panels.system.refreshToken")}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            disabled={mutations.clearEquity.isPending || !!dangerAction}
+            onClick={() => setDangerAction("equity")}
+          >
+            차트 기록 초기화
           </button>
           <button
             type="button"

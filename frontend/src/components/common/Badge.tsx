@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import classNames from "classnames";
 
 export type BadgeTone = "green" | "red" | "blue" | "gray" | "amber" | "success" | "warning" | "danger" | "live";
@@ -16,13 +16,14 @@ export interface IBadgeProps {
   dot?: boolean;
   solid?: boolean;
   className?: string;
+  style?: CSSProperties;
 }
 
-export const Badge = ({ children, tone = "gray", dot = false, solid = false, className }: IBadgeProps) => {
+export const Badge = ({ children, tone = "gray", dot = false, solid = false, className, style }: IBadgeProps) => {
   const resolved = TONE_ALIAS[tone] || tone;
   const cls = solid && resolved === "red"
     ? "badge badge--solid-red"
     : classNames(`badge badge--${resolved}`, { "badge--dot": dot }, className);
 
-  return <span className={cls}>{children}</span>;
+  return <span className={cls} style={style}>{children}</span>;
 };

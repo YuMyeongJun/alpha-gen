@@ -75,6 +75,7 @@ export interface IPortfolioRes {
   total_asset: number;
   cash: number;
   positions: IPositionRes[];
+  orders?: IOrderRes[];
   equity?: Array<{ total_asset: number; created_at?: string }>;
   risk?: {
     drawdown_pct?: number;

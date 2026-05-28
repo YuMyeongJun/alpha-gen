@@ -633,6 +633,56 @@ def kis_get_prev_day(stock_code: str) -> dict:
     }
 
 
+def kis_get_overseas_balance() -> tuple[int, list[dict]]:
+    """KIS 해외주식 잔고 조회 (NASD/NYSE/AMEX/SEHK) — 원화 환산 반환"""
+    tr_id = "TTTS3012R" if config.IS_REAL_TRADING else "VTTS3012R"
+    url = f"{config.KIS_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
+    exchanges = [
+        ("NASD", "USD"),
+        ("NYSE",  "USD"),
+        ("AMEX",  "USD"),
+        ("SEHK",  "HKD"),
+    ]
+    all_holdings: list[dict] = []
+    for excg, crcy in exchanges:
+        try:
+            data = _kis_request_get(
+                tr_id,
+                url,
+                {
+                    "CANO": config.ACCOUNT_NO,
+                    "ACNT_PRDT_CD": config.ACCOUNT_CODE,
+                    "OVRS_EXCG_CD": excg,
+                    "TR_CRCY_CD": crcy,
+                    "CTX_AREA_FK200": "",
+                    "CTX_AREA_NK200": "",
+                },
+            )
+            for item in data.get("output1", []):
+                qty = int(item.get("ovrs_cblc_qty") or 0)
+                if qty <= 0:
+                    continue
+                usd_avg = float(item.get("pchs_avg_pric") or 0)
+                usd_now = float(item.get("now_pric2") or 0)
+                usd_krw = fetch_usd_krw()
+                all_holdings.append({
+                    "code": item["ovrs_pdno"],
+                    "name": item.get("ovrs_item_name", item["ovrs_pdno"]),
+                    "qty":  qty,
+                    "avg_price":  int(usd_avg * usd_krw),
+                    "eval_price": int(usd_now * usd_krw),
+                    "exchange":   excg,
+                    "currency":   crcy,
+                    "usd_avg":    usd_avg,
+                    "usd_now":    usd_now,
+                    "evlu_pfls_rt": float(item.get("evlu_pfls_rt") or 0),
+                })
+        except Exception:
+            continue  # 거래소별 오류는 건너뜀
+    cash_krw = 0  # 해외 예수금은 별도 API → 0으로 처리 (포지션만 반영)
+    return cash_krw, all_holdings
+
+
 # KIS API 주문 관련 함수들은 order_engine.py로 분리되었습니다.
 
 

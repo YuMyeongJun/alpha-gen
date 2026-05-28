@@ -16,6 +16,8 @@ from .models import (
     AnalysisRequest,
     BacktestRequest,
     EmergencyStopRequest,
+    ManualOrderRequest,
+    ManualPositionRequest,
     PaperOrderRequest,
     PromotionStageRequest,
     WorkerRequest,
@@ -133,6 +135,40 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True, auto_r
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/orders/manual")
+    async def manual_order(payload: ManualOrderRequest) -> dict:
+        """UI에서 사용자가 직접 누르는 매수/매도. 리스크 휴면 모드 무시, KIS 실행 시도."""
+        try:
+            return trading_service.place_manual_order(
+                stock_code=payload.stock_code,
+                session=payload.session,
+                side=payload.side,
+                qty=payload.qty,
+                metadata={"source": "manual_ui"},
+            )
+        except (ValueError, TradingSafetyError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/portfolio/position/{session}/{stock_code}")
+    async def remove_position(session: str, stock_code: str) -> dict:
+        """한투 앱 등 외부에서 이미 매도한 포지션을 DB 추적에서 제거합니다."""
+        store.remove_position(session, stock_code.upper())
+        return {"removed": True, "session": session, "stock_code": stock_code.upper()}
+
+    @app.post("/api/portfolio/position/import")
+    async def import_position(payload: ManualPositionRequest) -> dict:
+        """한투 앱 등 외부에서 보유 중인 포지션을 수동으로 시스템에 등록합니다."""
+        try:
+            return trading_service.import_manual_position(
+                stock_code=payload.stock_code,
+                session=payload.session,
+                qty=payload.qty,
+                avg_price=payload.avg_price,
+                stock_name=payload.stock_name,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/backtests/run")
     async def run_backtest_route(payload: BacktestRequest) -> dict:
         return backtest_service.run(
@@ -156,6 +192,19 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True, auto_r
             "policy": safety_service.get_policy(),
             "audit": store.list_audit_events(limit=20),
         }
+
+    @app.post("/api/risk/sleep-mode/exit")
+    async def exit_sleep_mode() -> dict:
+        """리스크 휴면 모드 수동 해제"""
+        return risk_service.exit_sleep_mode()
+
+    @app.post("/api/system/equity/clear")
+    async def clear_equity(payload: AdminActionRequest) -> dict:
+        """자산 추이 기록(가라 데이터 포함) 전체 삭제"""
+        if not payload.confirm:
+            raise HTTPException(status_code=400, detail="confirm must be true")
+        cleared = store.clear_equity_snapshots()
+        return {"cleared": cleared, "message": f"자산 추이 {cleared}건 삭제 완료"}
 
     @app.post("/api/safety/emergency-stop")
     async def update_emergency_stop(payload: EmergencyStopRequest) -> dict:

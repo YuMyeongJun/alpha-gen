@@ -94,7 +94,13 @@ class UsYfinanceAdapter(MarketAdapter):
         return market_data.yf_get_price(stock_code)
 
     def get_balance(self) -> tuple[int, list[dict]]:
-        return market_data.kis_get_balance()
+        # 해외주식 잔고는 해외주식 전용 API로 조회 (국내 잔고 API와 다름)
+        if not config.MOCK_MODE:
+            try:
+                return market_data.kis_get_overseas_balance()
+            except Exception:
+                pass
+        return market_data.mock_get_balance()
 
     def get_price_history(self, stock_code: str, days: int = 30) -> list[float]:
         from technical import generate_mock_price_history

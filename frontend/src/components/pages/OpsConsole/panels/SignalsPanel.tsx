@@ -91,9 +91,16 @@ export const SignalsPanel = ({ signals }: ISignalsPanelProps) => {
                       <div className="mono muted">{signal.stock_code}</div>
                     </td>
                     <td>
-                      <Badge tone={verdict === "buy" ? "green" : verdict === "sell" ? "red" : "gray"} dot>
-                        {labels.signalVerdict(verdict)}
-                      </Badge>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+                        <Badge tone={verdict === "buy" ? "green" : verdict === "sell" ? "red" : "gray"} dot>
+                          {labels.signalVerdict(verdict)}
+                        </Badge>
+                        {signal.session === "US" && (verdict === "buy" || verdict === "sell") && (
+                          <span title={verdict === "buy" ? "매수 추천 시 텔레그램 알림 발송" : "보유 중이면 매도 알림 발송"}>
+                            <Badge tone={verdict === "buy" ? "blue" : "red"} style={{ fontSize: "0.7rem" }}>📱 알림</Badge>
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="num mono">{Number(signal.sentiment_score).toFixed(2)}</td>
                     <td className="num">{Number(signal.current_price).toLocaleString()}</td>

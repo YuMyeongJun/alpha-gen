@@ -358,6 +358,26 @@ class SQLiteStore:
             {"date": datetime.now(UTC).date().isoformat(), "codes": []},
         )
 
+    # ── US 매수추천 알림 중복 방지 ──────────────────────────────────────────
+
+    def get_daily_notify_guard(self) -> dict[str, Any]:
+        guard = self.get_state("daily_notify_guard", {"date": "", "codes": []})
+        today = datetime.now(UTC).date().isoformat()
+        if guard.get("date") != today:
+            guard = {"date": today, "codes": []}
+            self.set_json_state("daily_notify_guard", guard)
+        return guard
+
+    def has_notified_today(self, stock_code: str) -> bool:
+        return stock_code in self.get_daily_notify_guard().get("codes", [])
+
+    def mark_notified_today(self, stock_code: str) -> None:
+        guard = self.get_daily_notify_guard()
+        codes = set(guard.get("codes", []))
+        codes.add(stock_code)
+        guard["codes"] = sorted(codes)
+        self.set_json_state("daily_notify_guard", guard)
+
     def list_positions(self, session: str | None = None) -> list[dict[str, Any]]:
         query = "SELECT * FROM paper_positions"
         params: tuple[Any, ...] = ()
@@ -855,6 +875,13 @@ class SQLiteStore:
                 (total_asset, cash, session, note, utc_now()),
             )
             conn.commit()
+
+    def clear_equity_snapshots(self) -> int:
+        """모의/시드 데이터 포함 전체 자산 추이 기록 삭제"""
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM equity_snapshots")
+            conn.commit()
+            return cursor.rowcount
 
     def list_equity(self, limit: int = 120) -> list[dict[str, Any]]:
         with self._connect() as conn:

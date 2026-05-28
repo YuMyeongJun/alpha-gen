@@ -119,5 +119,143 @@ def notify_news_summary(topic: str, count: int, avg_score: float) -> None:
     )
 
 
+def _krw_usd(krw: float, usd_rate: float) -> str:
+    """KRW 가격을 '₩X,XXX (≈$Y.YY)' 형태로 반환. usd_rate=0 이면 원화만."""
+    if usd_rate > 0:
+        return f"₩{int(krw):,} (≈${krw / usd_rate:,.2f})"
+    return f"₩{int(krw):,}"
+
+
+def _format_tech(tech: dict, usd_rate: float = 0.0) -> str:
+    """
+    technical dict → 텔레그램용 기술 신호 설명 문자열.
+    usd_rate: KRW/USD 환율 (예: 1360). 양수이면 모든 원화 가격에 달러 병기.
+
+    technical dict 구조 (evaluate_buy_technicals 반환값):
+      rsi, ma5, ma20, current_price, signal, reason,
+      volatility: {target_price, open_price, breakout, current_price, ...}
+    """
+    lines: list[str] = []
+
+    # ── RSI ──────────────────────────────────────
+    rsi = tech.get("rsi")
+    if rsi is not None:
+        if rsi > config.RSI_OVERBOUGHT:
+            lines.append(f"  ❌ RSI {rsi:.1f} — 과매수 ({config.RSI_OVERBOUGHT} 초과, 추가 상승 부담)")
+        elif rsi < 30:
+            lines.append(f"  ✅ RSI {rsi:.1f} — 과매도 구간 (반등 기대)")
+        else:
+            lines.append(f"  ✅ RSI {rsi:.1f} — 정상 범위 (매수 여력 있음)")
+
+    # ── 이동평균 ──────────────────────────────────
+    current = tech.get("current_price")
+    ma20 = tech.get("ma20")
+    if current and ma20:
+        if current >= ma20:
+            lines.append(f"  ✅ 이동평균 골든크로스 — 단기선이 장기선(MA20) 위 → 상승추세")
+        else:
+            lines.append(f"  ❌ 이동평균 데드크로스 — 단기선이 장기선(MA20) 아래 → 하락추세")
+
+    # ── 변동성 돌파 ───────────────────────────────
+    vol = tech.get("volatility")
+    if vol:
+        target = float(vol.get("target_price", 0))
+        cur_p = float(vol.get("current_price") or current or 0)
+        breakout = vol.get("breakout", False)
+        open_p = float(vol.get("open_price", 0))
+        k = config.K_VALUE
+        if breakout:
+            lines.append(
+                f"  ✅ 변동성 돌파 — 오늘 진입 기준선 돌파 ✓\n"
+                f"      진입 기준선: {_krw_usd(target, usd_rate)}\n"
+                f"      현재가:      {_krw_usd(cur_p, usd_rate)}\n"
+                f"      ※ 기준선 = 시가({_krw_usd(open_p, usd_rate)}) + 전일등락폭×{k}"
+            )
+        else:
+            diff = target - cur_p
+            lines.append(
+                f"  ❌ 변동성 미돌파 — 기준선 {_krw_usd(target, usd_rate)}까지 {_krw_usd(diff, usd_rate)} 부족"
+            )
+
+    return "\n".join(lines) if lines else "  기술 데이터 없음"
+
+
+def notify_us_buy_recommendation(
+    stock_name: str,
+    ticker: str,
+    price_usd: float,
+    suggested_qty: int,
+    sentiment_score: int,
+    sentiment_reason: str,
+    technical: Optional[dict] = None,
+    exchange: str = "NASD",
+    usd_rate: float = 0.0,
+) -> None:
+    """미장 매수 추천 알림 — 시스템이 직접 주문하지 않고 사용자에게 KIS 앱 주문 유도."""
+    score_emoji = {2: "🔥", 1: "🟢"}.get(sentiment_score, "🟢")
+    exch_label = "NASDAQ" if exchange == "NASD" else exchange
+
+    # 현재가 양쪽 표기
+    price_krw = int(price_usd * usd_rate) if usd_rate > 0 else 0
+    price_line = (
+        f"<b>${price_usd:,.2f}</b> (≈₩{price_krw:,})"
+        if price_krw > 0 else f"<b>${price_usd:,.2f}</b>"
+    )
+
+    tech_section = ""
+    if technical:
+        tech_section = f"\n\n📈 <b>기술 신호</b>\n{_format_tech(technical, usd_rate)}"
+
+    _send(
+        f"{score_emoji} <b>미장 매수 추천</b> [{_ts()}]\n\n"
+        f"🇺🇸 <b>{stock_name}</b> ({ticker} · {exch_label})\n"
+        f"현재가: {price_line}  │  추천 수량: <b>{suggested_qty}주</b>\n\n"
+        f"📊 <b>AI 감성: {sentiment_score:+d}점</b>\n"
+        f"{sentiment_reason[:350]}"
+        f"{tech_section}\n\n"
+        f"→ KIS 앱에서 직접 매수하세요 📱"
+    )
+
+
+def notify_us_sell_recommendation(
+    stock_name: str,
+    ticker: str,
+    price_usd: float,
+    held_qty: int,
+    pnl_pct: float,
+    reason: str,
+    technical: Optional[dict] = None,
+    trigger: str = "signal",  # "signal" | "stop_loss"
+    usd_rate: float = 0.0,
+) -> None:
+    """미장 매도 추천 / 손절 알림 — 사용자에게 KIS 앱 매도 유도."""
+    pnl_emoji = "📈" if pnl_pct >= 0 else "📉"
+
+    if trigger == "stop_loss":
+        header = f"⛔ <b>손절 발동 — 즉시 매도 권고</b> [{_ts()}]"
+    else:
+        header = f"🔻 <b>미장 매도 추천</b> [{_ts()}]"
+
+    price_krw = int(price_usd * usd_rate) if usd_rate > 0 else 0
+    price_line = (
+        f"<b>${price_usd:,.2f}</b> (≈₩{price_krw:,})"
+        if price_krw > 0 else f"<b>${price_usd:,.2f}</b>"
+    )
+
+    tech_section = ""
+    if technical and trigger != "stop_loss":
+        tech_section = f"\n\n📈 <b>기술 현황</b>\n{_format_tech(technical, usd_rate)}"
+
+    _send(
+        f"{header}\n\n"
+        f"🇺🇸 <b>{stock_name}</b> ({ticker})\n"
+        f"현재가: {price_line}  │  보유: <b>{held_qty}주</b>\n"
+        f"평가손익: <b>{pnl_pct:+.2f}%</b> {pnl_emoji}\n\n"
+        f"📋 {reason[:350]}"
+        f"{tech_section}\n\n"
+        f"→ KIS 앱에서 직접 매도하세요 📱"
+    )
+
+
 def notify_custom(msg: str) -> None:
     _send(msg)

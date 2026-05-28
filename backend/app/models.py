@@ -51,6 +51,23 @@ class AdminActionRequest(BaseModel):
     reason: str = Field(min_length=2)
 
 
+class ManualOrderRequest(BaseModel):
+    """UI에서 직접 실행하는 매수/매도 주문 (리스크 휴면 모드 무시, KIS 실행 시도)."""
+    stock_code: str
+    session: Literal["KR", "US"]
+    side: Literal["buy", "sell"]
+    qty: int = Field(ge=1)
+
+
+class ManualPositionRequest(BaseModel):
+    """한투 앱 등 외부에서 보유 중인 포지션을 수동으로 등록합니다."""
+    stock_code: str
+    session: Literal["KR", "US"] = "KR"
+    qty: int = Field(ge=1)
+    avg_price: int = Field(ge=1, description="평균 매입가 (원)")
+    stock_name: str = ""
+
+
 class ApiEnvelope(BaseModel):
     status: Literal["ok", "error"]
     data: dict[str, Any]
