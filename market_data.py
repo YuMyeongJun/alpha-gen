@@ -91,6 +91,8 @@ def get_target_stocks_for_session(session: str) -> dict:
         return config.KR_STOCKS
     elif session == "US":
         return config.US_STOCKS
+    elif session == "BOTH":
+        return {**config.KR_STOCKS, **config.US_STOCKS}
     return {}
 
 

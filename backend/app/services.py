@@ -58,7 +58,7 @@ def get_display_cash(store: SQLiteStore) -> float:
 def resolve_session(session: str) -> str:
     if session == "AUTO":
         detected = market_data.get_market_session()
-        return "KR" if detected == "CLOSED" else detected
+        return "BOTH" if detected == "CLOSED" else detected
     return session
 
 
@@ -416,10 +416,12 @@ class AnalyticsService:
 
         signals: list[dict[str, Any]] = []
         for stock_code, stock_info in market_data.get_target_stocks_for_session(resolved).items():
+            # BOTH 세션이면 종목 소속에 따라 KR/US 결정
+            stock_session = ("KR" if stock_code in config.KR_STOCKS else "US") if resolved == "BOTH" else resolved
             try:
-                quote = market_data.get_price(stock_code, resolved)
-                history = market_data.get_price_history(stock_code, session=resolved, days=30)
-                prev_day = market_data.get_prev_day(stock_code, resolved)
+                quote = market_data.get_price(stock_code, stock_session)
+                history = market_data.get_price_history(stock_code, session=stock_session, days=30)
+                prev_day = market_data.get_prev_day(stock_code, stock_session)
                 sentiment = news_analyzer.get_stock_sentiment(stock_code, topic_results)
                 technicals = technical.evaluate_buy_technicals(
                     stock_code,
@@ -436,7 +438,7 @@ class AnalyticsService:
                     event_type="signal_build_failed",
                     severity="warning",
                     message=f"{stock_code} 시그널 생성 실패: {exc}",
-                    session=resolved,
+                    session=stock_session,
                     stock_code=stock_code,
                 )
                 continue
@@ -459,7 +461,7 @@ class AnalyticsService:
             signal = {
                 "stock_code": stock_code,
                 "stock_name": stock_info["name"],
-                "session": resolved,
+                "session": stock_session,
                 "sentiment_score": sentiment["score"],
                 "sentiment_label": sentiment["label"],
                 "sentiment_reason": sentiment["reason"],
@@ -476,7 +478,7 @@ class AnalyticsService:
                 "analyzed_at": analyzed_at,
                 "quote_collected_at": utc_timestamp(),
             }
-            self.store.update_position_price(resolved, stock_code, quote["current_price"])
+            self.store.update_position_price(stock_session, stock_code, quote["current_price"])
             signals.append(signal)
 
             # 일봉 데이터 없으면 백그라운드 수집 트리거
@@ -1389,7 +1391,11 @@ class AgentService:
                 "stage": self.safety_service.get_stage(),
             },
         )
-        self.trading_service.sync_live_positions_from_broker(resolved, source="worker")
+        if resolved == "BOTH":
+            self.trading_service.sync_live_positions_from_broker("KR", source="worker")
+            self.trading_service.sync_live_positions_from_broker("US", source="worker")
+        else:
+            self.trading_service.sync_live_positions_from_broker(resolved, source="worker")
         analysis = self.analytics_service.analyze_market(session=resolved, force_refresh=force_refresh)
         stop_loss_orders = self.trading_service.run_stop_loss_cycle()
         executed_orders = []
@@ -1404,7 +1410,18 @@ class AgentService:
                 payload={"cycle_id": cycle_id, "requested": place_orders, "policy": self.safety_service.get_policy()},
             )
         if should_place_orders:
-            executed_orders = self.trading_service.auto_buy_from_signals(analysis["signals"], resolved)
+            if resolved == "BOTH":
+                # 시장 전체 분석 시 시그널별 session으로 분리 라우팅
+                from itertools import groupby
+                for sig_session, grp in groupby(
+                    sorted(analysis["signals"], key=lambda s: s["session"]),
+                    key=lambda s: s["session"],
+                ):
+                    executed_orders.extend(
+                        self.trading_service.auto_buy_from_signals(list(grp), sig_session)
+                    )
+            else:
+                executed_orders = self.trading_service.auto_buy_from_signals(analysis["signals"], resolved)
         risk_summary = self.risk_service.update_drawdown()
         cycle_summary = {
             "cycle_id": cycle_id,

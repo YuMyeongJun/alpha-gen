@@ -98,7 +98,7 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True, auto_r
         )
 
     @app.get("/api/signals")
-    async def recent_signals(limit: int = 20) -> dict:
+    async def recent_signals(limit: int = 50) -> dict:
         analytics_service.ensure_signals_fresh_background()
         return {"signals": store.list_recent_signals(limit=limit)}
 

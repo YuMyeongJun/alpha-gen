@@ -13,7 +13,7 @@ import type {
 export async function fetchDashboardBundle(): Promise<IDashboardBundleRes> {
   const [portfolio, signals, orders, backtests, system, safety, audit] = await Promise.all([
     apiClient.get<IPortfolioRes>("/api/portfolio"),
-    apiClient.get<ISignalsListRes>("/api/signals"),
+    apiClient.get<ISignalsListRes>("/api/signals?limit=50"),
     apiClient.get<IOrdersListRes>("/api/orders"),
     apiClient.get<IBacktestsListRes>("/api/backtests"),
     apiClient.get<ISystemStatusRes>("/api/system/status"),

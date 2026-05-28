@@ -335,9 +335,12 @@ Each value:
 
 Example shape: {{ {topics_json_keys} ... }}"""
 
+        # 토픽 수에 따라 필요 토큰 추정: 토픽당 ~120토큰, 최소 2048, 최대 8192
+        required_tokens = max(2048, len(topic_headlines) * 120 + 512)
+        max_tokens = min(8192, required_tokens)
         message = client.messages.create(
             model=config.CLAUDE_MODEL,
-            max_tokens=2048,
+            max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = _extract_message_text(message)
