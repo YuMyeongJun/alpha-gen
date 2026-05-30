@@ -133,6 +133,23 @@ class RiskService:
         self._sync_to_store()
         return self.get_summary()
 
+    def reset_initial_capital(self) -> dict[str, Any]:
+        """현재 총자산을 기준 자본(initial_capital)으로 재설정하고 휴면 모드 해제.
+        실제 투자 자본이 paper 초기값(1000만원)과 다를 때 드로우다운 기준을 맞추기 위해 사용.
+        """
+        current_total = int(self.get_total_asset())
+        risk_manager.set_initial_capital(current_total)
+        risk_manager.exit_sleep_mode()
+        self._sync_to_store()
+        self.store.add_audit_event(
+            scope="risk",
+            event_type="initial_capital_reset",
+            severity="info",
+            message=f"기준 자본 재설정: {current_total:,}원 (휴면 모드 해제 포함)",
+            payload={"new_initial_capital": current_total},
+        )
+        return self.get_summary()
+
 
 class SafetyService:
     LIVE_STAGES = {"live_limited", "live_full"}
@@ -407,28 +424,90 @@ class AnalyticsService:
         ).start()
         return True
 
+    def _get_custom_stock_info(self) -> tuple[dict[str, dict], dict[str, dict], list[str]]:
+        """커스텀 종목 정보를 KR/US 분류 + 추가 뉴스 토픽 목록으로 반환."""
+        custom = self.store.get_custom_stocks()
+        extra_kr: dict[str, dict] = {}
+        extra_us: dict[str, dict] = {}
+        extra_topics: list[str] = []
+        for s in custom:
+            info: dict[str, Any] = {"name": s["name"], "keywords": s.get("keywords", [])}
+            if s["session"] == "KR":
+                extra_kr[s["code"]] = info
+            else:
+                info["exchange"] = s.get("exchange", "NASD")
+                extra_us[s["code"]] = info
+            topic = s.get("news_topic") or " ".join(s.get("keywords", [s["name"]])[:8])
+            if topic and topic not in config.NEWS_TOPICS and topic not in extra_topics:
+                extra_topics.append(topic)
+        return extra_kr, extra_us, extra_topics
+
+    def _get_custom_topic_map(self) -> dict[str, list[str]]:
+        """커스텀 종목 → 뉴스 토픽 매핑."""
+        result: dict[str, list[str]] = {}
+        for s in self.store.get_custom_stocks():
+            topic = s.get("news_topic") or " ".join(s.get("keywords", [s["name"]])[:8])
+            if topic:
+                result[s["code"]] = [topic]
+        return result
+
     def analyze_market(self, session: str = "AUTO", force_refresh: bool = False) -> dict[str, Any]:
         resolved = resolve_session(session)
         analyzed_at = utc_timestamp()
+
+        # 커스텀 종목 수집
+        extra_kr, extra_us, extra_topics = self._get_custom_stock_info()
+        extra_topic_map = self._get_custom_topic_map()
+        extra_stock_info = {
+            **{c: {"name": i["name"]} for c, i in extra_kr.items()},
+            **{c: {"name": i["name"]} for c, i in extra_us.items()},
+        }
+        custom_kr_codes = set(extra_kr.keys())
+
         if force_refresh:
             topic_results = {
                 topic: news_analyzer.analyze_topic(topic, force_refresh=True)
                 for topic in config.NEWS_TOPICS
             }
+            for topic in extra_topics:
+                topic_results[topic] = news_analyzer.analyze_topic(topic, force_refresh=True)
         else:
             topic_results = news_analyzer.analyze_all_topics()
+            for topic in extra_topics:
+                if topic not in topic_results:
+                    topic_results[topic] = news_analyzer.analyze_topic(topic, force_refresh=False)
         self.store.save_sentiments(topic_results)
         self.store.set_state("last_news_fetch", utc_timestamp())
 
+        # 기본 종목 + 커스텀 종목 병합
+        base_stocks = market_data.get_target_stocks_for_session(resolved)
+        all_stocks: dict[str, Any] = dict(base_stocks)
+        if resolved in ("KR", "BOTH"):
+            for code, info in extra_kr.items():
+                if code not in all_stocks:
+                    all_stocks[code] = info
+        if resolved in ("US", "BOTH"):
+            for code, info in extra_us.items():
+                if code not in all_stocks:
+                    all_stocks[code] = info
+
         signals: list[dict[str, Any]] = []
-        for stock_code, stock_info in market_data.get_target_stocks_for_session(resolved).items():
-            # BOTH 세션이면 종목 소속에 따라 KR/US 결정
-            stock_session = ("KR" if stock_code in config.KR_STOCKS else "US") if resolved == "BOTH" else resolved
+        for stock_code, stock_info in all_stocks.items():
+            # BOTH 세션이면 종목 소속에 따라 KR/US 결정 (커스텀 KR 포함)
+            if resolved == "BOTH":
+                stock_session = "KR" if (stock_code in config.KR_STOCKS or stock_code in custom_kr_codes) else "US"
+            else:
+                stock_session = resolved
             try:
                 quote = market_data.get_price(stock_code, stock_session)
                 history = market_data.get_price_history(stock_code, session=stock_session, days=30)
                 prev_day = market_data.get_prev_day(stock_code, stock_session)
-                sentiment = news_analyzer.get_stock_sentiment(stock_code, topic_results)
+                sentiment = news_analyzer.get_stock_sentiment(
+                    stock_code,
+                    topic_results,
+                    extra_topic_map=extra_topic_map,
+                    extra_stock_info=extra_stock_info,
+                )
                 technicals = technical.evaluate_buy_technicals(
                     stock_code,
                     history,
@@ -673,20 +752,35 @@ class TradingService:
         try:
             cash, holdings = market_data.get_balance(session)
         except Exception as exc:
-            with self._broker_sync_audit_lock:
-                fail_audit_key = "broker_sync_last_fail_audit"
-                last_fail_audit = self.store.get_state(fail_audit_key)
-                fail_audit_age = timestamp_age_seconds(str(last_fail_audit) if last_fail_audit else None)
-                if fail_audit_age is None or fail_audit_age >= 300:
-                    self.store.set_state(fail_audit_key, utc_timestamp())
-                    self.store.add_audit_event(
-                        scope="broker",
-                        event_type="position_sync_failed",
-                        severity="warning",
-                        message=f"{session} 잔고 동기화 실패: {exc}",
-                        session=session,
-                    )
-            return
+            exc_msg = str(exc)
+            # 토큰 인증 오류 → 이미 market_data 내부에서 재발급 시도됨.
+            # 재발급 성공 시 즉시 한 번 더 시도한다 (sync 1회 실패로 끝내지 않음).
+            if "rt_cd=1" in exc_msg or "인증된 token" in exc_msg:
+                try:
+                    cash, holdings = market_data.get_balance(session)
+                    # 재시도 성공 → 아래 정상 처리로 진행
+                except Exception as exc:
+                    exc_msg = str(exc)
+                    # 재시도도 실패 → 아래 공통 오류 처리로 낙하
+                    pass
+                else:
+                    exc_msg = ""  # 재시도 성공 신호
+
+            if exc_msg:  # 최종 실패
+                with self._broker_sync_audit_lock:
+                    fail_audit_key = "broker_sync_last_fail_audit"
+                    last_fail_audit = self.store.get_state(fail_audit_key)
+                    fail_audit_age = timestamp_age_seconds(str(last_fail_audit) if last_fail_audit else None)
+                    if fail_audit_age is None or fail_audit_age >= 300:
+                        self.store.set_state(fail_audit_key, utc_timestamp())
+                        self.store.add_audit_event(
+                            scope="broker",
+                            event_type="position_sync_failed",
+                            severity="warning",
+                            message=f"{session} 잔고 동기화 실패: {exc_msg}",
+                            session=session,
+                        )
+                return
         positions = [
             {
                 "stock_code": item["code"],
@@ -785,6 +879,19 @@ class TradingService:
                     session=session,
                     note=f"paper_{side}",
                 )
+                # 국장 텔레그램 알림 (US는 _notify_us_* 에서 별도 처리)
+                if session == "KR":
+                    try:
+                        import notifier
+                        signal_snap = (metadata or {}).get("signal_snapshot", {}) or {}
+                        score = int(signal_snap.get("sentiment_score", 0))
+                        reason = str(signal_snap.get("sentiment_reason") or ("매수" if side == "buy" else "매도"))
+                        if side == "buy":
+                            notifier.notify_buy(self._stock_name(stock_code, session), stock_code, int(price), qty, score, reason, market="KR", mock=config.MOCK_MODE)
+                        else:
+                            notifier.notify_sell(self._stock_name(stock_code, session), stock_code, int(price), qty, int(result["realized_pnl"] or 0), reason, market="KR", mock=config.MOCK_MODE)
+                    except Exception:
+                        pass
                 updated["portfolio"] = self.get_portfolio_snapshot()
                 return updated
             except ValueError as exc:
@@ -844,11 +951,19 @@ class TradingService:
     def _submit_live_order(self, *, stock_code: str, session: str, side: str, qty: int) -> tuple[bool, str]:
         import order_engine
 
-        if session == "KR":
-            return order_engine.kis_buy(stock_code, qty) if side == "buy" else order_engine.kis_sell(stock_code, qty)
-        if session == "US":
-            return order_engine.kis_us_buy(stock_code, qty) if side == "buy" else order_engine.kis_us_sell(stock_code, qty)
-        raise TradingSafetyError(f"지원하지 않는 세션입니다: {session}")
+        def _do_submit() -> tuple[bool, str]:
+            if session == "KR":
+                return order_engine.kis_buy(stock_code, qty) if side == "buy" else order_engine.kis_sell(stock_code, qty)
+            if session == "US":
+                return order_engine.kis_us_buy(stock_code, qty) if side == "buy" else order_engine.kis_us_sell(stock_code, qty)
+            raise TradingSafetyError(f"지원하지 않는 세션입니다: {session}")
+
+        ok, msg = _do_submit()
+        # 주문 실패 이유가 토큰 인증 오류면 시장 데이터 내부에서 이미 재발급됨 → 1회 재시도
+        # (주문 미전송 확인된 토큰 오류에 한해 재시도, 부분 전송 위험 최소화)
+        if not ok and ("rt_cd=1" in msg or "인증된 token" in msg):
+            ok, msg = _do_submit()
+        return ok, msg
 
     def place_shadow_order(
         self,
@@ -994,6 +1109,19 @@ class TradingService:
             metadata=self._order_metadata(metadata, signal_snapshot=signal, broker_message=broker_message),
         )
         self.store.add_fill(order["id"], stock_code, qty, price, realized_pnl)
+        # 국장 텔레그램 알림 (US는 _notify_us_* 에서 별도 처리)
+        if session == "KR":
+            try:
+                import notifier
+                signal_snap = signal or {}
+                score = int(signal_snap.get("sentiment_score", 0))
+                reason = str(signal_snap.get("sentiment_reason") or ("매수" if side == "buy" else "매도"))
+                if side == "buy":
+                    notifier.notify_buy(self._stock_name(stock_code, session), stock_code, int(price), qty, score, reason, market="KR", mock=False)
+                else:
+                    notifier.notify_sell(self._stock_name(stock_code, session), stock_code, int(price), qty, int(realized_pnl or 0), reason, market="KR", mock=False)
+            except Exception:
+                pass
         self.sync_live_positions_from_broker(session)
         reconciled = self.store.transition_order(
             order["id"],
@@ -1020,6 +1148,31 @@ class TradingService:
 
     def auto_buy_from_signals(self, signals: list[dict[str, Any]], session: str) -> list[dict[str, Any]]:
         if not self.risk_service.can_trade():
+            # 휴면 모드여도 매수 후보가 있으면 텔레그램으로 알림 (주문은 못 하지만 파악은 할 수 있도록)
+            buy_candidates = [s for s in signals if s.get("buy_signal") and not self.store.has_notified_today(s["stock_code"])]
+            if buy_candidates:
+                try:
+                    import notifier
+                    sleep_reason = str(self.store.get_state("sleep_reason", "드로우다운 초과"))
+                    names = ", ".join(f"{s['stock_name']}({s['stock_code']})" for s in buy_candidates[:5])
+                    notifier.notify_custom(
+                        f"⚠️ <b>국장 매수 보류 — 휴면 모드</b>\n"
+                        f"매수 후보: {names}\n"
+                        f"휴면 사유: {sleep_reason}\n"
+                        f"→ Ops → 리스크 기준 재설정 후 재개 가능"
+                    )
+                    for s in buy_candidates:
+                        self.store.mark_notified_today(s["stock_code"])
+                except Exception:
+                    pass
+            self.store.add_audit_event(
+                scope="risk",
+                event_type="auto_buy_blocked_sleep_mode",
+                severity="warning",
+                message=f"휴면 모드로 자동 매수 차단 — {session} 시그널 {len(signals)}건 무시됨",
+                session=session,
+                payload={"sleep_reason": self.store.get_state("sleep_reason", "unknown"), "signal_count": len(signals)},
+            )
             return []
         orders: list[dict[str, Any]] = []
         execution_mode = self.safety_service.execution_mode()
@@ -1116,6 +1269,14 @@ class TradingService:
         execution_mode = self.safety_service.execution_mode()
         for target in stop_targets:
             metadata = {"source": "stop_loss", "loss_pct": target["loss_pct"]}
+
+            # KR 포지션 손절: 텔레그램 알림
+            if target.get("session") == "KR":
+                try:
+                    import notifier
+                    notifier.notify_stop_loss(target["name"], target["code"], float(target["loss_pct"]))
+                except Exception:
+                    pass
 
             # US 포지션 손절: 직접 주문 불가 → 텔레그램으로 매도 안내 (DB는 paper로 추적)
             # 손절은 긴급 상황이므로 dedup 없이 매 사이클마다 알림
@@ -1714,6 +1875,67 @@ class AgentService:
                 )
         return notified
 
+    def _check_api_sustainability(self) -> None:
+        """Claude API 일일 비용이 수익 대비 과도하거나 임계값 초과 시 텔레그램 알림.
+        같은 날 중복 알림은 1회로 제한한다."""
+        try:
+            import claude_usage
+
+            daily_cost = claude_usage.today_cost_usd()
+            if daily_cost <= 0:
+                return
+
+            # 중복 알림 방지 (당일 1회)
+            alert_key = f"api_cost_alert:{claude_usage._today()}"
+            if self.store.has_notified_today(alert_key):
+                return
+
+            # 오늘 실현 손익 계산 (체결된 주문의 realized_pnl 합산)
+            today_str = datetime.now(UTC).date().isoformat()
+            today_orders = [
+                o for o in self.store.list_recent_orders(limit=200)
+                if str(o.get("created_at", "")).startswith(today_str)
+                and o.get("status") in {"filled", "reconciled"}
+                and o.get("realized_pnl") is not None
+            ]
+            daily_pnl_krw = sum(float(o["realized_pnl"]) for o in today_orders)
+
+            monthly_est = claude_usage.estimate_monthly_usd()
+            usd_rate = 1_350.0
+
+            should_alert = False
+            # 조건 1: 일일 비용이 설정 임계값 초과
+            if daily_cost >= config.CLAUDE_DAILY_COST_ALERT_USD:
+                should_alert = True
+            # 조건 2: 양수 손익 대비 API 비용 비율이 임계값 초과
+            if daily_pnl_krw > 0:
+                cost_ratio = (daily_cost * usd_rate) / daily_pnl_krw
+                if cost_ratio >= config.CLAUDE_COST_PNL_RATIO_ALERT:
+                    should_alert = True
+
+            if should_alert:
+                import notifier
+                notifier.notify_api_cost_alert(
+                    daily_cost_usd=daily_cost,
+                    daily_pnl_krw=daily_pnl_krw,
+                    monthly_est_usd=monthly_est,
+                    usd_rate=usd_rate,
+                )
+                self.store.mark_notified_today(alert_key)
+                self.store.add_audit_event(
+                    scope="system",
+                    event_type="api_cost_alert_sent",
+                    severity="warning",
+                    message=f"Claude API 일일 비용 알림: ${daily_cost:.4f} / 손익 {int(daily_pnl_krw):,}원",
+                    payload={
+                        "daily_cost_usd": daily_cost,
+                        "daily_pnl_krw": daily_pnl_krw,
+                        "monthly_est_usd": monthly_est,
+                    },
+                )
+        except Exception:
+            pass  # 모니터링 실패는 사이클 중단 없이 무시
+
     def run_cycle(self, *, session: str = "AUTO", force_refresh: bool = False, place_orders: bool = True) -> dict[str, Any]:
         resolved = resolve_session(session)
         cycle_id = f"{resolved}:{utc_timestamp()}"
@@ -1768,6 +1990,10 @@ class AgentService:
             us_notified += self._notify_us_sell_signals(us_signals)
 
         risk_summary = self.risk_service.update_drawdown()
+
+        # ── Claude API 비용 vs 수익 모니터링 ────────────────────────────────
+        self._check_api_sustainability()
+
         buy_candidate_count = sum(1 for s in all_signals if s["buy_signal"])
         cycle_summary = {
             "cycle_id": cycle_id,
@@ -1786,6 +2012,7 @@ class AgentService:
                 f"매수후보 {buy_candidate_count}건 · "
                 f"국장주문 {len(executed_orders)}건 · "
                 f"미장알림 {len(us_notified)}건"
+                + (" ⚠️휴면모드" if risk_summary.get("sleep_mode") else "")
             ),
         }
         worker_state = self.store.get_state("worker_state", {}) or {}

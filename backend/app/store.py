@@ -378,6 +378,48 @@ class SQLiteStore:
         guard["codes"] = sorted(codes)
         self.set_json_state("daily_notify_guard", guard)
 
+    # ── 커스텀 종목 레지스트리 ──────────────────────────────────────────────
+
+    def get_custom_stocks(self) -> list[dict[str, Any]]:
+        """DB에 저장된 사용자 정의 종목 목록 반환."""
+        return self.get_state("custom_stocks", []) or []
+
+    def add_custom_stock(
+        self,
+        *,
+        code: str,
+        name: str,
+        session: str,
+        keywords: list[str],
+        exchange: str = "NASD",
+        news_topic: str = "",
+    ) -> dict[str, Any]:
+        """커스텀 종목 추가. 같은 code+session이 이미 있으면 덮어씀."""
+        from datetime import UTC, datetime
+        stock: dict[str, Any] = {
+            "code": code.upper().strip(),
+            "name": name.strip(),
+            "session": session.upper(),
+            "keywords": [k.strip() for k in keywords if k.strip()],
+            "exchange": exchange,
+            "news_topic": news_topic.strip(),
+            "added_at": datetime.now(UTC).isoformat(),
+        }
+        stocks = self.get_custom_stocks()
+        stocks = [s for s in stocks if not (s["code"] == stock["code"] and s["session"] == stock["session"])]
+        stocks.append(stock)
+        self.set_json_state("custom_stocks", stocks)
+        return stock
+
+    def remove_custom_stock(self, code: str, session: str) -> bool:
+        """커스텀 종목 제거. 성공 시 True."""
+        stocks = self.get_custom_stocks()
+        new_stocks = [s for s in stocks if not (s["code"] == code.upper() and s["session"] == session.upper())]
+        if len(new_stocks) == len(stocks):
+            return False
+        self.set_json_state("custom_stocks", new_stocks)
+        return True
+
     def list_positions(self, session: str | None = None) -> list[dict[str, Any]]:
         query = "SELECT * FROM paper_positions"
         params: tuple[Any, ...] = ()

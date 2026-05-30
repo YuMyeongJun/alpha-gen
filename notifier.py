@@ -259,3 +259,25 @@ def notify_us_sell_recommendation(
 
 def notify_custom(msg: str) -> None:
     _send(msg)
+
+
+def notify_api_cost_alert(
+    daily_cost_usd: float,
+    daily_pnl_krw: float,
+    monthly_est_usd: float,
+    usd_rate: float = 1_350.0,
+) -> None:
+    """Claude API 일일 비용이 수익 대비 높거나 월 예상 비용이 임계값을 초과할 때 알림."""
+    daily_cost_krw = int(daily_cost_usd * usd_rate)
+    monthly_est_krw = int(monthly_est_usd * usd_rate)
+    pnl_sign = "+" if daily_pnl_krw >= 0 else ""
+    ratio_pct = (daily_cost_usd * usd_rate / abs(daily_pnl_krw) * 100) if daily_pnl_krw != 0 else 0
+
+    _send(
+        f"💸 <b>Claude API 비용 알림</b> [{_ts()}]\n"
+        f"오늘 API 비용: <b>${daily_cost_usd:.4f}</b> (≈ {daily_cost_krw:,}원)\n"
+        f"오늘 실현 손익: {pnl_sign}{int(daily_pnl_krw):,}원\n"
+        f"비용/수익 비율: {ratio_pct:.1f}%\n"
+        f"월 예상 비용: ${monthly_est_usd:.2f} (≈ {monthly_est_krw:,}원)\n"
+        f"→ Anthropic 콘솔에서 잔여 크레딧 확인 후 필요 시 충전하세요"
+    )

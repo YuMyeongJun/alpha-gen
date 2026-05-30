@@ -157,6 +157,7 @@ KR_STOCKS = {
     "247540": {"name": "에코프로비엠",    "keywords": ["에코프로", "EcoPro BM", "양극재", "cathode"]},
     "005490": {"name": "POSCO홀딩스",     "keywords": ["POSCO", "리튬", "lithium steel"]},
     "086520": {"name": "에코프로",        "keywords": ["에코프로", "EcoPro", "배터리소재", "KOSDAQ"]},
+    "011790": {"name": "SKC",             "keywords": ["SKC", "SK Enpulse", "유리기판", "glass substrate", "semiconductor packaging", "AI packaging substrate", "TGV", "SK Nexilis", "copper foil"]},
     # ── 바이오 / 제약 ──────────────────────────────────────────────────────
     "068270": {"name": "셀트리온",        "keywords": ["Celltrion", "바이오시밀러", "biosimilar"]},
     "207940": {"name": "삼성바이오로직스", "keywords": ["Samsung Biologics", "CDMO", "바이오의약품"]},
@@ -238,6 +239,12 @@ US_STOCKS = {
     "ENPH": {"name": "Enphase",    "exchange": "NASD", "keywords": ["Enphase Energy", "solar microinverter"]},
     "FSLR": {"name": "First Solar","exchange": "NASD", "keywords": ["First Solar", "solar panel thin film"]},
     "CCJ":  {"name": "Cameco",     "exchange": "NYSE", "keywords": ["Cameco", "uranium nuclear fuel"]},
+    # ── 유럽 (US 상장 ADR / 이중상장) ─────────────────────────────────────────
+    "ASML": {"name": "ASML",       "exchange": "NASD", "keywords": ["ASML", "EUV lithography", "semiconductor equipment", "chip manufacturing"]},
+    "NVO":  {"name": "Novo Nordisk","exchange":"NYSE",  "keywords": ["Novo Nordisk", "Ozempic", "GLP-1", "semaglutide obesity"]},
+    "SAP":  {"name": "SAP",        "exchange": "NYSE", "keywords": ["SAP", "enterprise AI", "ERP cloud", "RISE with SAP"]},
+    "AZN":  {"name": "AstraZeneca","exchange":"NASD",  "keywords": ["AstraZeneca", "oncology", "Tagrisso", "Lynparza biotech"]},
+    "SHEL": {"name": "Shell",      "exchange": "NYSE", "keywords": ["Shell", "LNG energy", "oil gas transition renewables"]},
 }
 
 ENABLE_KIS_US_ORDERS = _env_bool("ENABLE_KIS_US_ORDERS", False)
@@ -256,6 +263,8 @@ NEWS_TOPICS = [
     "EcoPro POSCO cathode lithium battery material Korea",
     "LG Chem SK Innovation Korea chemical battery material",
     "S-Oil Hanwha Korea Zinc energy chemical refinery",
+    "SKC SK Enpulse glass substrate semiconductor packaging AI chip TGV Korea",
+    "SKC SK Nexilis copper foil EV battery anode Korea",
     # ── KR 바이오 / 제약 ───────────────────────────────────────────────────
     "Celltrion Samsung Biologics biosimilar CDMO Korea",
     "Hanmi Yuhan Alteogen Korea pharma oncology biotech",
@@ -295,6 +304,12 @@ NEWS_TOPICS = [
     # ── US 에너지 / 원자재 ─────────────────────────────────────────────────
     "ExxonMobil Chevron Occidental oil gas energy",
     "NextEra Enphase First Solar Cameco clean energy nuclear renewable",
+    # ── 유럽 (ADR / 이중상장) ─────────────────────────────────────────────────
+    "ASML EUV lithography semiconductor equipment chip manufacturing Europe",
+    "Novo Nordisk Ozempic GLP-1 semaglutide obesity diabetes Europe pharma",
+    "SAP enterprise AI ERP cloud RISE Germany software",
+    "AstraZeneca oncology Tagrisso Lynparza biotech UK pharma",
+    "Shell LNG oil gas energy transition renewables Europe",
 ]
 
 STOCK_TOPIC_MAP = {
@@ -311,6 +326,8 @@ STOCK_TOPIC_MAP = {
     "247540": ["EcoPro POSCO cathode lithium battery material Korea"],
     "005490": ["EcoPro POSCO cathode lithium battery material Korea"],
     "086520": ["EcoPro POSCO cathode lithium battery material Korea"],
+    "011790": ["SKC SK Enpulse glass substrate semiconductor packaging AI chip TGV Korea",
+               "SKC SK Nexilis copper foil EV battery anode Korea"],
     "051910": ["LG Chem SK Innovation Korea chemical battery material"],
     "096770": ["LG Chem SK Innovation Korea chemical battery material"],
     "011170": ["LG Chem SK Innovation Korea chemical battery material"],
@@ -388,6 +405,12 @@ STOCK_TOPIC_MAP = {
     "ENPH":  ["NextEra Enphase First Solar Cameco clean energy nuclear renewable"],
     "FSLR":  ["NextEra Enphase First Solar Cameco clean energy nuclear renewable"],
     "CCJ":   ["NextEra Enphase First Solar Cameco clean energy nuclear renewable"],
+    # ── 유럽 (ADR / 이중상장) ─────────────────────────────────────────────────
+    "ASML":  ["ASML EUV lithography semiconductor equipment chip manufacturing Europe"],
+    "NVO":   ["Novo Nordisk Ozempic GLP-1 semaglutide obesity diabetes Europe pharma"],
+    "SAP":   ["SAP enterprise AI ERP cloud RISE Germany software"],
+    "AZN":   ["AstraZeneca oncology Tagrisso Lynparza biotech UK pharma"],
+    "SHEL":  ["Shell LNG oil gas energy transition renewables Europe"],
 }
 
 NEWS_FETCH_INTERVAL_MIN = _env_int("NEWS_FETCH_INTERVAL_MIN", 60)
@@ -452,6 +475,7 @@ MOCK_SEED_PRICES = {
     "247540": 190_000,   # 에코프로비엠
     "005490": 340_000,   # POSCO홀딩스
     "086520":  80_000,   # 에코프로
+    "011790": 139_000,   # SKC (동박·유리기판)
     # 바이오/제약
     "068270": 175_000,   # 셀트리온
     "207940": 850_000,   # 삼성바이오로직스
@@ -531,7 +555,20 @@ MOCK_SEED_PRICES = {
     "ENPH":   108_000,   # ~$80
     "FSLR":   189_000,   # ~$140
     "CCJ":     74_000,   # ~$55
+    # 유럽 (ADR)
+    "ASML":   972_000,   # ~$720
+    "NVO":    121_000,   # ~$90
+    "SAP":    270_000,   # ~$200
+    "AZN":    108_000,   # ~$80
+    "SHEL":    94_000,   # ~$70
 }
+
+
+# [J-2] Claude API 비용 모니터링
+# 일일 API 비용이 이 값(USD) 초과 시 텔레그램 알림
+CLAUDE_DAILY_COST_ALERT_USD = _env_float("CLAUDE_DAILY_COST_ALERT_USD", 1.0)
+# 일일 API 비용이 실현 손익 대비 이 비율 초과 시 알림 (0~1, 기본 50%)
+CLAUDE_COST_PNL_RATIO_ALERT = _env_float("CLAUDE_COST_PNL_RATIO_ALERT", 0.5)
 
 
 # [K] Product/runtime

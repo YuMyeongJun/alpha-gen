@@ -507,6 +507,14 @@ def _kis_parse_response(res) -> dict:
     rt_cd = str(data.get("rt_cd", ""))
     if rt_cd not in ("", "0"):
         msg1 = data.get("msg1") or data.get("msg_cd") or "unknown KIS error"
+        # 토큰 인증 오류(rt_cd=1) → 캐시 클리어 + 백그라운드 재발급
+        # 현재 호출은 실패하지만 다음 호출은 새 토큰으로 성공한다
+        if rt_cd == "1":
+            reset_kis_token_cache()
+            try:
+                _get_kis_token(force_refresh=True)
+            except Exception:
+                pass  # 재발급 실패해도 에러는 그대로 전파
         raise RuntimeError(f"KIS rt_cd={rt_cd} {msg1}")
 
     if res.status_code >= 400:

@@ -68,6 +68,16 @@ class ManualPositionRequest(BaseModel):
     stock_name: str = ""
 
 
+class AddStockRequest(BaseModel):
+    """화면에서 커스텀 종목을 추가할 때 사용."""
+    code: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    session: Literal["KR", "US"]
+    keywords: list[str] = []
+    exchange: Literal["NASD", "NYSE", "AMEX"] = "NASD"
+    news_topic: str = ""
+
+
 class ApiEnvelope(BaseModel):
     status: Literal["ok", "error"]
     data: dict[str, Any]

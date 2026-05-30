@@ -9,6 +9,7 @@ const NAV_ITEMS: Array<{ to: string; end: boolean; labelKey: string; icon: IconN
   { to: "/orders", end: false, labelKey: "nav.orders", icon: "orders" },
   { to: "/backtests", end: false, labelKey: "nav.backtests", icon: "backtest" },
   { to: "/audit", end: false, labelKey: "nav.audit", icon: "audit" },
+  { to: "/stocks", end: false, labelKey: "nav.stocks", icon: "stocks" },
   { to: "/system", end: false, labelKey: "nav.system", icon: "system" },
 ];
 

@@ -6,6 +6,7 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { OrdersPage } from "@/pages/OrdersPage";
 import { PortfolioPage } from "@/pages/PortfolioPage";
 import { SignalsPage } from "@/pages/SignalsPage";
+import { StocksPage } from "@/pages/StocksPage";
 import { SystemPage } from "@/pages/SystemPage";
 
 export const AppRouter = () => (
@@ -18,6 +19,7 @@ export const AppRouter = () => (
       <Route path="orders" element={<OrdersPage />} />
       <Route path="backtests" element={<BacktestsPage />} />
       <Route path="audit" element={<AuditPage />} />
+      <Route path="stocks" element={<StocksPage />} />
       <Route path="system" element={<SystemPage />} />
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />

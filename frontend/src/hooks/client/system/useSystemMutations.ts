@@ -66,6 +66,12 @@ export function useSystemMutations() {
     onSuccess: () => invalidateDashboard(queryClient),
   });
 
+  /** 현재 총자산을 기준 자본으로 재설정 + 휴면 모드 해제 */
+  const resetCapital = useMutation({
+    mutationFn: () => apiClient.post("/api/risk/capital/reset").then((res) => res.data),
+    onSuccess: () => invalidateDashboard(queryClient),
+  });
+
   /** 자산 추이 기록(가라 데이터 포함) 초기화 */
   const clearEquity = useMutation({
     mutationFn: (payload: IAdminActionReq) =>
@@ -73,5 +79,5 @@ export function useSystemMutations() {
     onSuccess: () => invalidateDashboard(queryClient),
   });
 
-  return { clearCache, refreshKisToken, resetDatabase, syncBroker, importPosition, paperOrder, manualOrder, exitSleepMode, clearEquity, removePosition };
+  return { clearCache, refreshKisToken, resetDatabase, syncBroker, importPosition, paperOrder, manualOrder, exitSleepMode, clearEquity, removePosition, resetCapital };
 }

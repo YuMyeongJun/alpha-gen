@@ -7,7 +7,7 @@ import { SignalBars } from "@/components/pages/OpsConsole/charts/SignalBars";
 import { OpsConsoleRail } from "@/components/pages/OpsConsole/OpsConsoleRail";
 import { useDomainLabels } from "@/hooks/useDomainLabels";
 import { useOpsConsoleContext } from "@/hooks/useOpsConsoleContext";
-import { buildEquitySeries, type EquityPeriod } from "@/utils/equity";
+import { buildEquitySeries, filterEquityByPeriod, type EquityPeriod } from "@/utils/equity";
 import { currency, formatDateTime, formatRelative } from "@/utils/format";
 
 const PERIODS: EquityPeriod[] = ["1D", "1W", "1M", "ALL"];
@@ -35,6 +35,25 @@ export const DashboardPage = () => {
     () => buildEquitySeries(portfolio, equityPeriod, t("chart.current")),
     [portfolio, equityPeriod, t],
   );
+
+  const equityRangeLabel = useMemo(() => {
+    const pts = equityData.length;
+    if (!pts) return null;
+    if (pts === 1) return `${equityData[0].t} · 1포인트`;
+    return `${equityData[0].t} ~ ${equityData[pts - 1].t} · ${pts}포인트`;
+  }, [equityData]);
+
+  const periodPointCounts = useMemo(() => {
+    const raw = portfolio.equity || [];
+    return (["1D", "1W", "1M", "ALL"] as EquityPeriod[]).reduce<Record<EquityPeriod, number>>(
+      (acc, p) => {
+        acc[p] = filterEquityByPeriod(raw, p).length;
+        return acc;
+      },
+      {} as Record<EquityPeriod, number>,
+    );
+  }, [portfolio.equity]);
+
   const pnlPct =
     baseline > 0 ? ((Number(portfolio.total_asset) - baseline) / baseline) * 100 : 0;
   const cashWeight =
@@ -136,18 +155,35 @@ export const DashboardPage = () => {
             eyebrow={t("panels.dashboard.equityEyebrow")}
             title={t("panels.dashboard.equityTitle")}
             right={
-              <div className="row" style={{ gap: 6 }}>
-                {PERIODS.map((period) => (
-                  <button
-                    key={period}
-                    type="button"
-                    className={`btn btn--sm${equityPeriod === period ? "" : " btn--ghost"}`}
-                    style={equityPeriod === period ? undefined : { background: "var(--bg-tertiary)" }}
-                    onClick={() => setEquityPeriod(period)}
-                  >
-                    {t(PERIOD_LABEL_KEYS[period])}
-                  </button>
-                ))}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                <div className="row" style={{ gap: 6 }}>
+                  {PERIODS.map((period) => {
+                    const count = periodPointCounts[period] ?? 0;
+                    return (
+                      <button
+                        key={period}
+                        type="button"
+                        className={`btn btn--sm${equityPeriod === period ? "" : " btn--ghost"}`}
+                        style={equityPeriod === period ? undefined : { background: "var(--bg-tertiary)" }}
+                        onClick={() => setEquityPeriod(period)}
+                        title={`${count}포인트`}
+                      >
+                        {t(PERIOD_LABEL_KEYS[period])}
+                        <span
+                          className="muted"
+                          style={{ fontSize: 10, marginLeft: 3, opacity: 0.7 }}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {equityRangeLabel && (
+                  <span className="muted" style={{ fontSize: 11 }}>
+                    {equityRangeLabel}
+                  </span>
+                )}
               </div>
             }
           >

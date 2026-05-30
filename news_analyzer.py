@@ -217,6 +217,11 @@ Respond ONLY with valid JSON (no markdown, no explanation):
             max_tokens=256,
             messages=[{"role": "user", "content": prompt}],
         )
+        try:
+            import claude_usage
+            claude_usage.record(config.CLAUDE_MODEL, message.usage.input_tokens, message.usage.output_tokens)
+        except Exception:
+            pass
         raw = _extract_message_text(message)
         result = _parse_claude_json(raw)
         if not isinstance(result, dict):
@@ -343,6 +348,11 @@ Example shape: {{ {topics_json_keys} ... }}"""
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
+        try:
+            import claude_usage
+            claude_usage.record(config.CLAUDE_MODEL, message.usage.input_tokens, message.usage.output_tokens)
+        except Exception:
+            pass
         raw = _extract_message_text(message)
         parsed = _parse_claude_json(raw)
         if not isinstance(parsed, dict):
@@ -434,17 +444,24 @@ def analyze_all_topics() -> dict[str, dict]:
     return results
 
 
-def get_stock_sentiment(stock_code: str, all_results: dict[str, dict]) -> dict:
+def get_stock_sentiment(
+    stock_code: str,
+    all_results: dict[str, dict],
+    *,
+    extra_topic_map: dict[str, list[str]] | None = None,
+    extra_stock_info: dict[str, dict] | None = None,
+) -> dict:
     """
     종목 코드에 맞는 감성 점수를 집계.
     config.STOCK_TOPIC_MAP 우선, 없으면 keywords ↔ topic 부분 일치 폴백.
+    extra_topic_map / extra_stock_info: 커스텀 종목용 런타임 확장 데이터.
     """
     label_map = {2: "매우긍정", 1: "긍정", 0: "중립", -1: "부정", -2: "매우부정"}
     matched_scores: list[int] = []
     matched_reasons: list[str] = []
     matched_keywords: list[str] = []
 
-    topic_map = getattr(config, "STOCK_TOPIC_MAP", {})
+    topic_map = {**getattr(config, "STOCK_TOPIC_MAP", {}), **(extra_topic_map or {})}
     mapped_topics = topic_map.get(stock_code, [])
 
     if mapped_topics:
@@ -456,7 +473,8 @@ def get_stock_sentiment(stock_code: str, all_results: dict[str, dict]) -> dict:
             matched_reasons.append(result.get("reason", ""))
             matched_keywords.extend(result.get("keywords", []))
     else:
-        stock_info = {**config.KR_STOCKS, **config.US_STOCKS}.get(stock_code, {})
+        base_info = {**config.KR_STOCKS, **config.US_STOCKS, **(extra_stock_info or {})}
+        stock_info = base_info.get(stock_code, {})
         keywords = stock_info.get("keywords", [])
         for topic, result in all_results.items():
             if any(kw.lower() in topic.lower() for kw in keywords):

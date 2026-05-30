@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 import config
 
 from .models import (
+    AddStockRequest,
     AdminActionRequest,
     AgentCycleRequest,
     AnalysisRequest,
@@ -198,6 +199,12 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True, auto_r
         """리스크 휴면 모드 수동 해제"""
         return risk_service.exit_sleep_mode()
 
+    @app.post("/api/risk/capital/reset")
+    async def reset_initial_capital() -> dict:
+        """현재 총자산을 기준 자본으로 재설정 + 휴면 모드 해제
+        실제 투자 자본이 페이퍼 초기값(1000만원)과 다를 때 드로우다운 기준을 바로잡는다."""
+        return risk_service.reset_initial_capital()
+
     @app.post("/api/system/equity/clear")
     async def clear_equity(payload: AdminActionRequest) -> dict:
         """자산 추이 기록(가라 데이터 포함) 전체 삭제"""
@@ -275,6 +282,103 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True, auto_r
             return system_admin.reset_database(reason=payload.reason)
         except TradingSafetyError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # ── Claude API 비용 모니터링 ───────────────────────────────────────────────
+
+    @app.get("/api/system/claude/usage")
+    async def claude_usage_stats() -> dict:
+        """Claude API 사용량 및 비용 통계 (서버 메모리 기반, 재시작 시 초기화)."""
+        try:
+            import claude_usage
+            today = claude_usage.today_summary()
+            session_data = claude_usage.session_summary()
+            history = claude_usage.all_days()
+            monthly_est = claude_usage.estimate_monthly_usd()
+        except Exception:
+            today = session_data = {}
+            history = []
+            monthly_est = 0.0
+        return {
+            "today": today,
+            "session": session_data,
+            "history": history,
+            "monthly_estimate_usd": monthly_est,
+            "alert_threshold_usd": config.CLAUDE_DAILY_COST_ALERT_USD,
+        }
+
+    # ── 종목 관리 ──────────────────────────────────────────────────────────────
+
+    @app.get("/api/stocks")
+    async def list_stocks() -> dict:
+        """config 기본 종목 + 커스텀 추가 종목 전체 목록."""
+        custom = store.get_custom_stocks()
+        custom_keys = {f"{s['session']}:{s['code']}" for s in custom}
+
+        kr_list = [
+            {
+                "code": code,
+                "name": info["name"],
+                "session": "KR",
+                "source": "config",
+                "keywords": info.get("keywords", []),
+            }
+            for code, info in config.KR_STOCKS.items()
+            if f"KR:{code}" not in custom_keys
+        ]
+        us_list = [
+            {
+                "code": code,
+                "name": info["name"],
+                "session": "US",
+                "source": "config",
+                "keywords": info.get("keywords", []),
+                "exchange": info.get("exchange", "NASD"),
+            }
+            for code, info in config.US_STOCKS.items()
+            if f"US:{code}" not in custom_keys
+        ]
+        custom_list = [{**s, "source": "custom"} for s in custom]
+        return {
+            "stocks": kr_list + us_list + custom_list,
+            "custom_count": len(custom),
+        }
+
+    @app.post("/api/stocks")
+    async def add_stock(payload: AddStockRequest) -> dict:
+        """커스텀 종목 추가 (코드 중복 시 덮어씀)."""
+        stock = store.add_custom_stock(
+            code=payload.code,
+            name=payload.name,
+            session=payload.session,
+            keywords=payload.keywords,
+            exchange=payload.exchange,
+            news_topic=payload.news_topic,
+        )
+        store.add_audit_event(
+            scope="system",
+            event_type="custom_stock_added",
+            severity="info",
+            message=f"커스텀 종목 추가: {payload.name}({payload.code}) [{payload.session}]",
+            session=payload.session,
+            stock_code=payload.code.upper(),
+        )
+        return {"added": True, "stock": stock}
+
+    @app.delete("/api/stocks/{session}/{code}")
+    async def remove_stock(session: str, code: str) -> dict:
+        """커스텀 추가 종목 삭제 (config 기본 종목은 삭제 불가)."""
+        removed = store.remove_custom_stock(code=code, session=session.upper())
+        if not removed:
+            raise HTTPException(status_code=404, detail="커스텀 종목으로 등록된 종목이 아닙니다.")
+        store.add_audit_event(
+            scope="system",
+            event_type="custom_stock_removed",
+            severity="info",
+            message=f"커스텀 종목 삭제: {code.upper()} [{session.upper()}]",
+            session=session.upper(),
+            stock_code=code.upper(),
+        )
+        return {"removed": True, "code": code.upper(), "session": session.upper()}
 
     if index_path is not None:
 

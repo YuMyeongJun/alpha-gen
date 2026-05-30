@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 import { Badge, Card, ConfirmDialog, Icon, PageHeader } from "@/components/common";
@@ -7,6 +8,7 @@ import { useSystemMutations } from "@/hooks/client/system/useSystemMutations";
 import { useDomainLabels } from "@/hooks/useDomainLabels";
 import type { IDashboardBundleRes, ISafetyPolicyRes } from "@/models/interface/res/IDashboardRes";
 import { badgeClassByStatus, formatDateTime, formatRelative } from "@/utils/format";
+import apiClient from "@/modules/apiClient";
 
 type ImportForm = { stock_code: string; session: "KR" | "US"; qty: number; avg_price: number; stock_name: string };
 
@@ -45,6 +47,13 @@ export const SystemPanel = ({ system, policy }: ISystemPanelProps) => {
   const packageTotal = Object.keys(packages).length;
   const mutations = useSystemMutations();
   const [dangerAction, setDangerAction] = useState<DangerAction>(null);
+
+  const { data: claudeUsage } = useQuery({
+    queryKey: ["claude-usage"],
+    queryFn: () => apiClient.get("/api/system/claude/usage").then((r) => r.data),
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  });
   const [adminReason, setAdminReason] = useState(t("common.operatorConfirm"));
   const importForm = useForm<ImportForm>({
     defaultValues: { stock_code: "", session: "KR", qty: 1, avg_price: 0, stock_name: "" },
@@ -220,6 +229,90 @@ export const SystemPanel = ({ system, policy }: ISystemPanelProps) => {
             포지션 등록
           </button>
         </form>
+      </Card>
+
+      {/* 리스크 기준 재설정 */}
+      <Card title="리스크 기준 설정" eyebrow="RISK CAPITAL" style={{ marginBottom: 14 }}>
+        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+          시스템의 드로우다운 기준이 실제 투자 자본과 다를 때(예: 페이퍼 초기값 1000만원으로 고정) 현재 총자산을 새로운 기준으로 재설정합니다.
+          휴면 모드도 함께 해제됩니다.
+        </p>
+        <button
+          type="button"
+          className="btn btn--accent"
+          disabled={mutations.resetCapital.isPending}
+          onClick={async () => {
+            try {
+              await mutations.resetCapital.mutateAsync();
+              toast.success("기준 자본 재설정 완료 — 드로우다운 기준이 현재 총자산으로 초기화되었습니다.");
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "재설정 실패");
+            }
+          }}
+        >
+          {mutations.resetCapital.isPending ? <Icon name="refresh" size={13} className="spinning" /> : null}
+          현재 자산을 리스크 기준으로 재설정
+        </button>
+      </Card>
+
+      {/* Claude API 비용 모니터링 */}
+      <Card title="Claude API 비용" eyebrow="AI COST MONITOR" style={{ marginBottom: 14 }}>
+        {!claudeUsage ? (
+          <div className="muted" style={{ padding: "8px 0" }}>불러오는 중…</div>
+        ) : (
+          <>
+            <div className="grid-2" style={{ gap: 10, marginBottom: 10 }}>
+              <dl className="kv">
+                <dt>오늘 API 비용</dt>
+                <dd>
+                  <b>${((claudeUsage.today?.cost_usd ?? 0)).toFixed(4)}</b>
+                  <span className="muted" style={{ fontSize: 11, marginLeft: 4 }}>
+                    ({claudeUsage.today?.calls ?? 0}회 호출)
+                  </span>
+                </dd>
+                <dt>월 예상 비용</dt>
+                <dd>
+                  <b>${(claudeUsage.monthly_estimate_usd ?? 0).toFixed(2)}</b>
+                  <span className="muted" style={{ fontSize: 11, marginLeft: 4 }}>
+                    ≈ {Math.round((claudeUsage.monthly_estimate_usd ?? 0) * 1350).toLocaleString()}원
+                  </span>
+                </dd>
+              </dl>
+              <dl className="kv">
+                <dt>세션 누적 비용</dt>
+                <dd>${((claudeUsage.session?.cost_usd ?? 0)).toFixed(4)}</dd>
+                <dt>세션 호출 수</dt>
+                <dd>{claudeUsage.session?.calls ?? 0}회</dd>
+                <dt>알림 임계값</dt>
+                <dd className="muted">${claudeUsage.alert_threshold_usd ?? 1.0} / 일</dd>
+              </dl>
+            </div>
+            {(claudeUsage.history ?? []).length > 1 && (
+              <details style={{ marginTop: 6 }}>
+                <summary className="muted" style={{ cursor: "pointer", fontSize: 12 }}>최근 사용 이력</summary>
+                <table className="table" style={{ marginTop: 6 }}>
+                  <thead>
+                    <tr><th>날짜</th><th>비용(USD)</th><th>호출</th><th>입력 토큰</th><th>출력 토큰</th></tr>
+                  </thead>
+                  <tbody>
+                    {[...(claudeUsage.history ?? [])].reverse().slice(0, 7).map((d: Record<string, unknown>) => (
+                      <tr key={String(d.date)}>
+                        <td className="mono muted">{String(d.date)}</td>
+                        <td><b>${Number(d.cost_usd).toFixed(4)}</b></td>
+                        <td>{String(d.calls)}</td>
+                        <td className="muted">{Number(d.input_tokens).toLocaleString()}</td>
+                        <td className="muted">{Number(d.output_tokens).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
+            )}
+            <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+              💡 크레딧 소진 방지: Anthropic 콘솔 → Billing → <b>Auto top-up</b> 활성화 권장
+            </p>
+          </>
+        )}
       </Card>
 
       <Card title={t("panels.system.dangerTitle")} eyebrow={t("panels.system.dangerEyebrow")}>
