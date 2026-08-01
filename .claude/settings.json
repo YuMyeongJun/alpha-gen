@@ -1,0 +1,70 @@
+{
+  "$comment": "프로젝트 루트의 .claude/settings.json 으로 배치. v2 — config/__init__.py(패키지), backend/app/services.py의 SafetyService/RiskService, 이중 SQLite DB(data/agent_state.db, data/alpha_gen.sqlite3) 구조 반영.",
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Edit(*.py)",
+      "Write(*.py)",
+      "Bash(pytest*)",
+      "Bash(python -m pytest*)",
+      "Bash(python -m py_compile*)",
+      "Bash(python -m pyflakes*)",
+      "Bash(ruff check*)",
+      "Bash(ruff format --check*)",
+      "Bash(pip install -r requirements.txt)",
+      "Bash(pip show*)",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git branch*)",
+      "Bash(git checkout -b*)"
+    ],
+    "ask": [
+      "Bash(streamlit run*)",
+      "Bash(uvicorn*)",
+      "Bash(python -m backend.app*)",
+      "Bash(python main.py*)",
+      "Bash(python scripts/live_mode_checklist.py*)",
+      "Bash(git push*)",
+      "Edit(config/__init__.py)",
+      "Edit(config.py)",
+      "Edit(backend/app/services.py)",
+      "Edit(backend/app/store.py)",
+      "Edit(.env)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(**/kis_token_cache.json)",
+      "Edit(.env)",
+      "Edit(**/kis_token_cache.json)",
+      "Edit(**/data/agent_state.db)",
+      "Edit(**/data/alpha_gen.sqlite3)",
+      "Bash(rm -rf*)",
+      "Bash(*ALLOW_LIVE_TRADING*true*)",
+      "Bash(*ALLOW_LIVE_TRADING=true*)",
+      "Bash(*EMERGENCY_STOP*false*)",
+      "Bash(*EMERGENCY_STOP=false*)",
+      "Bash(*--real*)",
+      "Bash(*ACCOUNT_NO*)",
+      "Bash(*ACCOUNT_SECRET*)",
+      "Bash(*KIS_APP_SECRET*)",
+      "Bash(curl*openapi.koreainvestment*)",
+      "Bash(curl*openapivts.koreainvestment*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/post_edit_check.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
