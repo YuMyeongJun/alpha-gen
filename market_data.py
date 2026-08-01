@@ -797,7 +797,9 @@ def yf_get_price_history(ticker: str, days: int = 30) -> list[float]:
         rate = fetch_usd_krw()
         import yfinance as yf
         hist = yf.Ticker(ticker).history(period=f"{days}d", interval="1d")
-        return [float(c) * rate for c in hist["Close"].tolist()]
+        # 상장정지/거래정지/데이터 공백일에 yfinance가 NaN 종가를 반환할 수 있어 제거한다 —
+        # 그대로 두면 technical.py의 RSI/MA/변동성 계산에 NaN이 흘러들어간다 (spec.md P2 참고)
+        return [float(c) * rate for c in hist["Close"].dropna().tolist()]
     except Exception:
         from technical import generate_mock_price_history
         return generate_mock_price_history(ticker, n=days)
