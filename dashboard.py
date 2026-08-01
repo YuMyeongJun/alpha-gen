@@ -446,13 +446,14 @@ with risk_col:
     st.markdown(f"<div style='font-size:0.8rem; color:#64748b; margin-top:4px;'>*누적 드로우다운이 -{dd_limit:.0f}%에 도달하면 에이전트가 모든 포지션을 긴급 청산하고 '휴면 모드'로 자동 전환됩니다.</div>", unsafe_allow_html=True)
 
 with sleep_col:
-    # 휴면 모드 상태 표시
-    is_sleep = risk_manager.SLEEP_MODE
+    # 휴면 모드 상태 표시 — main.py 실시간 루프가 기준으로 삼는 alpha_gen.sqlite3에서 직접 조회
+    # (agent_state.db는 크래시 종료 시에만 갱신되는 백업이라 여기서 참조하면 상태가 어긋날 수 있음, spec.md P1 참고)
+    is_sleep, sleep_reason_text = market_data.get_live_sleep_state()
     if is_sleep:
         st.markdown(f"""
         <div style='background-color:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:12px; padding:12px 18px;'>
             <span style='color:#ef4444; font-weight:700; font-size:1.1rem;'>🛑 에이전트 휴면 모드 가동 중</span><br>
-            <span style='color:#fca5a5; font-size:0.85rem;'>사유: {risk_manager.SLEEP_REASON}</span>
+            <span style='color:#fca5a5; font-size:0.85rem;'>사유: {sleep_reason_text}</span>
         </div>
         """, unsafe_allow_html=True)
     else:

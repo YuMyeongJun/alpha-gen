@@ -20,6 +20,7 @@ import json
 import os
 import threading
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 import config
@@ -286,6 +287,53 @@ def load_agent_state() -> None:
 def load_mock_state() -> None:
     """하위 호환 별칭"""
     load_agent_state()
+
+
+def get_live_sleep_state(db_path: str | None = None) -> tuple[bool, str]:
+    """alpha_gen.sqlite3에서 실시간 휴면 상태를 읽는다 (진짜 읽기 전용).
+
+    main.py의 실제 매매 루프는 이미 backend/app/services.py의 RiskService/SafetyService를
+    경유해 alpha_gen.sqlite3를 기준으로 SLEEP_MODE를 판단한다 — agent_state.db는 크래시
+    종료 시에만 갱신되는 백업이라 대시보드가 그걸 참조하면 실시간 상태와 어긋날 수 있다
+    (spec.md P1 참고). 대시보드처럼 별도 프로세스에서 최신 휴면 상태를 보여줘야 하는
+    경우 이 함수로 alpha_gen.sqlite3를 직접 조회한다.
+
+    `backend.app.store.SQLiteStore`를 그대로 쓰지 않는 이유: `bootstrap_legacy=False`로
+    생성해도 생성자가 매번 `legacy_bootstrap_done` 상태 키에 쓰기를 한다(store.py:26-27) —
+    Streamlit이 재실행될 때마다 별도 프로세스에서 실제 운영 DB에 쓰기가 발생해 락 경합
+    위험이 생긴다(독립 리뷰에서 발견). sqlite3 URI `mode=ro` 연결로 진짜 읽기 전용을 보장한다.
+    """
+    import sqlite3
+
+    if config.MOCK_MODE:
+        return False, ""
+
+    path = Path(db_path or config.DB_PATH)
+    try:
+        uri = f"{path.resolve().as_uri()}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=5)
+        try:
+            rows = dict(
+                conn.execute(
+                    "SELECT key, value FROM agent_state WHERE key IN ('sleep_mode', 'sleep_reason')"
+                ).fetchall()
+            )
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False, ""
+
+    def _decode(raw: str | None, default: Any) -> Any:
+        if raw is None:
+            return default
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return raw
+
+    is_sleep = bool(_decode(rows.get("sleep_mode"), False))
+    reason = str(_decode(rows.get("sleep_reason"), ""))
+    return is_sleep, reason
 
 
 def set_last_news_fetch(dt: datetime) -> None:
