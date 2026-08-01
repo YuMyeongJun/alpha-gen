@@ -1464,7 +1464,8 @@ class TradingService:
     ) -> dict[str, Any]:
         """
         UI에서 사용자가 직접 실행하는 매수/매도.
-        - 긴급정지만 체크 (리스크 휴면 모드·자동매매 안전장치 무시)
+        - ensure_order_allowed()로 다른 주문 경로와 동일한 전체 안전게이트 적용
+          (긴급정지/휴면모드/[live 판정 시] 스테이지·주문한도·손실한도)
         - KIS 자격증명이 있으면 실제 KIS API 호출 시도
         - KIS 미실행 또는 실패 시 DB 추적(페이퍼)으로 폴백
         - KIS 실행 성공 후 잔고 재동기화
@@ -1474,11 +1475,10 @@ class TradingService:
         if session not in {"KR", "US"}:
             raise ValueError("세션은 KR 또는 US 여야 합니다.")
 
-        # 긴급정지만 체크 — 리스크 휴면 모드는 수동 주문에서 적용 안 함
-        policy = self.safety_service.get_policy()
-        stop_state = policy["emergency_stop"]
-        if stop_state["enabled"]:
-            raise TradingSafetyError(stop_state.get("reason") or "긴급 정지 상태입니다.")
+        # mode="live"로 판정되면(실계좌 자격증명 설정됨) 브로커 시세 조회 전에 게이트부터 통과해야 한다 —
+        # 어차피 차단될 주문이라면 실계좌 KIS API를 먼저 건드리지 않는다.
+        mode = "live" if (not config.MOCK_MODE and config.KIS_CREDENTIALS_CONFIGURED) else "paper"
+        self.safety_service.ensure_order_allowed(mode=mode, session=session, side=side, signal=None)
 
         quote = market_data.get_price(stock_code, session)
         price = float(quote["current_price"])

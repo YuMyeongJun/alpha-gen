@@ -138,7 +138,7 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True, auto_r
 
     @app.post("/api/orders/manual")
     async def manual_order(payload: ManualOrderRequest) -> dict:
-        """UI에서 사용자가 직접 누르는 매수/매도. 리스크 휴면 모드 무시, KIS 실행 시도."""
+        """UI에서 사용자가 직접 누르는 매수/매도. ensure_order_allowed()로 전체 안전게이트 적용, KIS 실행 시도."""
         try:
             return trading_service.place_manual_order(
                 stock_code=payload.stock_code,

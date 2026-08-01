@@ -1,8 +1,10 @@
+import pytest
 from fastapi.testclient import TestClient
 
 import config
 import market_data
 from backend.app.main import create_app
+from backend.app.services import TradingSafetyError, build_service_bundle
 
 
 def _reload_config() -> None:
@@ -235,6 +237,213 @@ def test_system_admin_endpoints(tmp_path, monkeypatch):
     assert "cache_cleared" in event_types
     assert "kis_token_refreshed" in event_types
     assert "db_reset" in event_types
+
+
+def test_manual_order_still_succeeds_when_all_gates_pass(tmp_path):
+    client = make_client(tmp_path)
+
+    order = client.post(
+        "/api/orders/manual",
+        json={"stock_code": "005930", "session": "KR", "side": "buy", "qty": 1},
+    )
+    assert order.status_code == 200
+    assert order.json()["status"] == "filled"
+
+
+def test_manual_order_blocked_by_emergency_stop(tmp_path):
+    client = make_client(tmp_path)
+    client.post("/api/safety/emergency-stop", json={"enabled": True, "reason": "테스트 정지"})
+
+    order = client.post(
+        "/api/orders/manual",
+        json={"stock_code": "005930", "session": "KR", "side": "buy", "qty": 1},
+    )
+    assert order.status_code == 400
+
+
+def test_manual_order_buy_blocked_when_sleep_mode(tmp_path):
+    bundle = build_service_bundle(
+        db_path=str(tmp_path / "alpha_gen.sqlite3"), bootstrap_legacy=False, auto_resume_worker=False
+    )
+    bundle.store.set_state("sleep_mode", True)
+    bundle.store.set_state("sleep_reason", "테스트 드로우다운")
+
+    with pytest.raises(TradingSafetyError):
+        bundle.trading_service.place_manual_order(stock_code="005930", session="KR", side="buy", qty=1)
+
+    assert bundle.store.get_paper_cash() == 10_000_000
+    assert bundle.store.get_position("KR", "005930") is None
+
+
+def test_manual_order_blocked_when_stage_not_live(tmp_path, monkeypatch):
+    _configure_paper_kis_env(monkeypatch)  # MOCK_MODE=false + KIS 자격증명 → mode="live" 판정, stage 기본값 "paper"
+    import order_engine
+
+    def _must_not_be_called(*_args, **_kwargs):
+        raise AssertionError("live 게이트가 브로커 호출 전에 차단해야 합니다")
+
+    monkeypatch.setattr(order_engine, "kis_buy", _must_not_be_called)
+
+    client = make_client(tmp_path)
+    order = client.post(
+        "/api/orders/manual",
+        json={"stock_code": "005930", "session": "KR", "side": "buy", "qty": 1},
+    )
+    assert order.status_code == 400
+    assert "실거래를 허용하지 않습니다" in order.json()["detail"]
+
+    portfolio = client.get("/api/portfolio")
+    assert portfolio.json()["cash"] == 10_000_000
+    assert portfolio.json()["positions"] == []
+
+
+def test_manual_order_blocked_when_allow_live_trading_false(tmp_path, monkeypatch):
+    _configure_paper_kis_env(monkeypatch)
+    import order_engine
+
+    def _must_not_be_called(*_args, **_kwargs):
+        raise AssertionError("live 게이트가 브로커 호출 전에 차단해야 합니다")
+
+    monkeypatch.setattr(order_engine, "kis_buy", _must_not_be_called)
+
+    client = make_client(tmp_path)
+    stage = client.post("/api/safety/stage", json={"stage": "live_limited"})
+    assert stage.status_code == 200
+
+    order = client.post(
+        "/api/orders/manual",
+        json={"stock_code": "005930", "session": "KR", "side": "buy", "qty": 1},
+    )
+    assert order.status_code == 400
+    assert "ALLOW_LIVE_TRADING" in order.json()["detail"]
+
+    portfolio = client.get("/api/portfolio")
+    assert portfolio.json()["cash"] == 10_000_000
+    assert portfolio.json()["positions"] == []
+
+
+def test_manual_order_blocked_when_live_order_limit_exceeded(tmp_path, monkeypatch):
+    _configure_paper_kis_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_LIVE_TRADING", "true")
+    monkeypatch.setenv("LIVE_MAX_ORDERS_PER_DAY", "1")
+    _reload_config()
+    import order_engine
+
+    def _must_not_be_called(*_args, **_kwargs):
+        raise AssertionError("live 게이트가 브로커 호출 전에 차단해야 합니다")
+
+    monkeypatch.setattr(order_engine, "kis_buy", _must_not_be_called)
+
+    bundle = build_service_bundle(
+        db_path=str(tmp_path / "alpha_gen.sqlite3"), bootstrap_legacy=False, auto_resume_worker=False
+    )
+    bundle.store.set_state("promotion_stage", "live_limited")
+    existing = bundle.store.create_order(
+        stock_code="005930",
+        stock_name="삼성전자",
+        session="KR",
+        side="buy",
+        mode="live",
+        qty=1,
+        requested_price=70000.0,
+    )
+    bundle.store.transition_order(
+        existing["id"],
+        to_status="filled",
+        event_type="live_filled",
+        message="filled",
+        attempt_count=1,
+        executed_price=70000.0,
+    )
+
+    with pytest.raises(TradingSafetyError):
+        bundle.trading_service.place_manual_order(stock_code="005930", session="KR", side="buy", qty=1)
+
+    assert bundle.store.get_position("KR", "005930") is None
+
+
+def test_manual_order_blocked_when_daily_loss_limit_exceeded(tmp_path, monkeypatch):
+    _configure_paper_kis_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_LIVE_TRADING", "true")
+    _reload_config()
+    import order_engine
+
+    def _must_not_be_called(*_args, **_kwargs):
+        raise AssertionError("live 게이트가 브로커 호출 전에 차단해야 합니다")
+
+    monkeypatch.setattr(order_engine, "kis_buy", _must_not_be_called)
+
+    bundle = build_service_bundle(
+        db_path=str(tmp_path / "alpha_gen.sqlite3"), bootstrap_legacy=False, auto_resume_worker=False
+    )
+    bundle.store.set_state("promotion_stage", "live_limited")
+    # 기본 total_asset(10,000,000) * MAX_DAILY_LOSS_PCT(기본 0.02) = 200,000원 한도를 넘는 손실 기록
+    loss_order = bundle.store.create_order(
+        stock_code="005930",
+        stock_name="삼성전자",
+        session="KR",
+        side="sell",
+        mode="live",
+        qty=1,
+        requested_price=70000.0,
+    )
+    bundle.store.transition_order(
+        loss_order["id"],
+        to_status="filled",
+        event_type="live_filled",
+        message="filled",
+        attempt_count=1,
+        executed_price=70000.0,
+        realized_pnl=-250_000.0,
+    )
+
+    with pytest.raises(TradingSafetyError):
+        bundle.trading_service.place_manual_order(stock_code="005930", session="KR", side="buy", qty=1)
+
+    assert bundle.store.get_position("KR", "005930") is None
+
+
+def test_manual_order_blocked_when_consecutive_losses_exceeded(tmp_path, monkeypatch):
+    _configure_paper_kis_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_LIVE_TRADING", "true")
+    monkeypatch.setenv("MAX_CONSECUTIVE_LOSSES", "2")
+    _reload_config()
+    import order_engine
+
+    def _must_not_be_called(*_args, **_kwargs):
+        raise AssertionError("live 게이트가 브로커 호출 전에 차단해야 합니다")
+
+    monkeypatch.setattr(order_engine, "kis_buy", _must_not_be_called)
+
+    bundle = build_service_bundle(
+        db_path=str(tmp_path / "alpha_gen.sqlite3"), bootstrap_legacy=False, auto_resume_worker=False
+    )
+    bundle.store.set_state("promotion_stage", "live_limited")
+    for i in range(2):
+        loss_order = bundle.store.create_order(
+            stock_code="005930",
+            stock_name="삼성전자",
+            session="KR",
+            side="sell",
+            mode="live",
+            qty=1,
+            requested_price=70000.0,
+            client_order_id=f"loss-{i}",
+        )
+        bundle.store.transition_order(
+            loss_order["id"],
+            to_status="filled",
+            event_type="live_filled",
+            message="filled",
+            attempt_count=1,
+            executed_price=68000.0,
+            realized_pnl=-2_000.0,
+        )
+
+    with pytest.raises(TradingSafetyError):
+        bundle.trading_service.place_manual_order(stock_code="005930", session="KR", side="buy", qty=1)
+
+    assert bundle.store.get_position("KR", "005930") is None
 
 
 def test_db_reset_blocked_when_emergency_stop(tmp_path):
