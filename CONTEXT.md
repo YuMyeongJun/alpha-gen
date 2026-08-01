@@ -1,8 +1,8 @@
 # alpha-gen — 세션 인수인계 문서 (Context Handoff)
 
 > **목적**: 새 Cursor 채팅 / 다른 개발자가 **코드베이스·진행 상황·다음 작업**을 바로 이어갈 수 있도록 정리한 문서  
-> **최종 갱신**: 2026-05-27  
-> **관련 문서**: [README.md](./README.md) (상세 스펙), [workthrough.md](./workthrough.md) (개발 요약)
+> **최종 갱신**: 2026-08-01 (하네스 엔지니어링 세션 — §15 참조)  
+> **관련 문서**: [README.md](./README.md) (상세 스펙), [workthrough.md](./workthrough.md) (개발 요약), [CLAUDE.md](./CLAUDE.md) (AI 에이전트 가드레일, **새 세션은 이 문서부터 자동으로 읽음**), [HARNESS_WORKFLOW.md](./HARNESS_WORKFLOW.md) (계획→구현→리뷰 프로세스)
 
 ---
 
@@ -13,30 +13,45 @@
 
 ---
 
-## 2. 현재 파일 구조
+## 2. 현재 파일 구조 (2026-08-01 갱신)
 
 ```
 alpha-gen/
-├── config.py              # ⭐ 설정 (Git 제외, 로컬 필수)
-├── main.py                  # 메인 에이전트 루프
-├── dashboard.py             # Streamlit 대시보드
-├── news_analyzer.py         # RSS + Claude/Mock 감성
-├── technical.py             # RSI, MA, 변동성 돌파, evaluate_buy_technicals()
-├── market_data.py           # 시세·잔고·세션·상태 영속화·equity_history
-├── market_adapters.py       # Mock / KisKR / UsYfinance 어댑터
-├── order_engine.py          # KIS 국내·해외 주문 + Mock 체결
-├── risk_manager.py          # 포지션·손절·드로우다운·휴면
-├── notifier.py              # 텔레그램
-├── agent_logging.py         # logging + logs/alpha_gen.log
-├── backtest.py              # 간이 백테스트 (python backtest.py)
-├── state_store.py           # ⭐ SQLite 상태 저장소 (mock_state.json 대체)
-├── migrate_to_sqlite.py     # JSON → DB 일회성 마이그레이션
-├── mock_state.json          # 레거시 — agent_state.db 전환 후 미사용
+├── CLAUDE.md                # ⭐ AI 에이전트 가드레일 (새 세션 시작 시 자동 로드)
+├── HARNESS_WORKFLOW.md       # ⭐ plan/work/review + 백테스트 검증 프로세스
+├── .claude/
+│   ├── settings.json         # 권한(allow/ask/deny) + PostToolUse 훅
+│   └── hooks/post_edit_check.sh
+├── config/__init__.py        # ⭐ 실제 사용되는 설정 (env-driven, .env에서 값 주입)
+├── config.example.py         # 설정 템플릿 (Git 포함)
+├── main.py                   # CLI 에이전트 루프 (backend.app.services 경유)
+├── backend/app/services.py   # ⭐ 서비스 계층 — SafetyService/RiskService/TradingService/
+│                              #   AgentService/BacktestService/DiagnosticsService
+├── backend/app/store.py      # SQLiteStore (data/alpha_gen.sqlite3)
+├── dashboard.py               # Streamlit 대시보드
+├── news_analyzer.py           # RSS + Claude/Mock 감성
+├── technical.py                # RSI, MA, 변동성 돌파, evaluate_buy_technicals()
+├── market_data.py              # 시세·잔고·세션·상태 영속화·equity_history
+├── market_adapters.py          # Mock / KisKR / UsYfinance 어댑터
+├── order_engine.py             # KIS 국내·해외 주문 + Mock 체결
+├── order_registry.py           # idempotent 주문 키(ticker_side_date)
+├── risk_manager.py             # 포지션·손절·드로우다운·휴면
+├── notifier.py                 # 텔레그램
+├── agent_logging.py            # logging + logs/alpha_gen.log
+├── backtest.py                 # 간이 백테스트 (BacktestService와 중복 여부 미확인 — HARNESS_WORKFLOW §4.3)
+├── state_store.py              # SQLite 상태 저장소 (data/agent_state.db) — backend의 alpha_gen.sqlite3와 별개 DB (CLAUDE.md §7-2)
+├── migrate_to_sqlite.py        # JSON → DB 일회성 마이그레이션 (완료됨)
+├── scripts/live_mode_checklist.py  # 실전 전환 전 필수 체크
+├── docs/operating_stages.md    # mock→paper→shadow→live_limited→live_full 승격 기준
 ├── Dockerfile / docker-compose.yml
-├── tests/                   # pytest 11개
+├── tests/                      # pytest 8개 파일
+├── archive/                     # 2026-08-01 정리: mock_state.json(.bak), 루트 config.py,
+│                                #   frontend-legacy/, cluade-design/ (모두 사용처 없음 확인 후 이동)
 ├── README.md / workthrough.md / CONTEXT.md (본 문서)
-└── logs/                    # Git 제외
+└── logs/                       # Git 제외
 ```
+
+> 루트 `config.py`, `mock_state.json`(.bak), `frontend-legacy/`, `cluade-design/`는 2026-08-01에 `archive/`로 이동했다 (코드에서 참조 없음 확인, git 커밋 `cd262dd`). 삭제가 아니라 이동이므로 필요하면 `archive/`에서 그대로 찾을 수 있다.
 
 ---
 
@@ -320,3 +335,41 @@ CONTEXT.md, README.md 읽고 현재 상태 파악 후 아래 작업 진행해줘
 - `_apply_agent_fields(state: dict)` 함수는 그대로 재사용 — `_store.load()`의 반환 포맷이 기존 JSON과 동일하게 설계되어 있음
 - `mock_trade_log`, `equity_history`, `_shared_sentiments` 메모리 전역변수는 유지 (대시보드 실시간 참조용)
 - `save_mock_state()` / `load_mock_state()` 하위 호환 별칭 유지
+
+---
+
+## 15. 하네스 엔지니어링 세션 인수인계 (2026-08-01, Cowork)
+
+**목적**: AI 에이전트(Claude Code 등)가 이 저장소에서 자율적으로 작업할 때 실거래 자산을 보호하는 가드레일·워크플로우·권한 체계를 구축.
+
+### 이번 세션에서 만든 것
+| 파일 | 내용 |
+|---|---|
+| `CLAUDE.md` (v2) | 실거래 게이트(`SafetyService.ensure_order_allowed()`) 구조, 절대 금지 사항, 사람 승인 필요 변경 목록, NaN/신선도 데이터 무결성 규칙을 실제 함수·클래스명 기준으로 정리 |
+| `HARNESS_WORKFLOW.md` (v2) | `/harness-plan`(명세 승인) → `/harness-work`(스코프 제한 TDD) → `/harness-review`(독립 리뷰) → 백테스트/단계 승격 검증의 4중 게이트. `technical.py`×`risk_manager.py`×`SafetyService` 3계층 교차검증 파이프라인 포함 |
+| `.claude/settings.json` + `.claude/hooks/post_edit_check.sh` | 파일 수정 직후 자동으로 린트+회귀테스트 실행, `config/__init__.py`·`risk_manager.py`·`backend/app/services.py`·`.env`에서 리스크 완화/실거래 활성화 시도 감지 시 차단 |
+
+### 처음 분석에서 놓쳤던 것 (v1→v2 갭, 상세는 대화 로그 참조)
+1. 실거래 최종 게이트는 `config.IS_REAL_TRADING` 단일 플래그가 아니라 `backend/app/services.py`의 `SafetyService.ensure_order_allowed()` — 긴급정지→휴면모드→신호신선도→(live일 때만) 스테이지/주문한도/일손실/연속손실 순으로 검사
+2. `docs/operating_stages.md`에 이미 5단계 승격 프로세스(`mock→paper→shadow→live_limited→live_full`)가 정의돼 있음 (재정의하지 않고 그대로 따름)
+3. `tests/` 8개 파일, `BacktestService`, `scripts/live_mode_checklist.py`가 이미 존재 (구버전 CLAUDE.md의 "테스트 없음" 서술은 오류였음)
+4. 상태 저장소가 `data/agent_state.db`(`state_store.StateStore`)와 `data/alpha_gen.sqlite3`(`backend/app/store.SQLiteStore`)로 이중화되어 있음 — 아직 미해결 리스크로 남겨둠
+
+### 오늘 정리한 것
+- 루트 `config.py`(내용은 `config.example.py`와 동일한 미기재 플레이스홀더, `.gitignore`에도 걸려있고 `config/` 패키지에 가려지는 죽은 파일로 추정), `mock_state.json`(.bak)(SQLite 전환 후 미사용, 코드 어디서도 참조 안 됨), `frontend-legacy/`(React `frontend/`로 대체), `cluade-design/`(디자인 시안, `frontend/`에 포팅 완료 추정) → 모두 삭제가 아니라 `archive/`로 이동 (커밋 `cd262dd`)
+
+### 로컬 Claude Code로 이어서 작업하기
+새로 대화 맥락을 설명할 필요 없음 — `CLAUDE.md`가 그 역할을 대신한다. 터미널에서:
+
+```bash
+cd <alpha-gen 로컬 경로>
+git status          # archive/ 정리 커밋이 반영됐는지 확인
+claude               # 시작 시 CLAUDE.md 자동 로드, .claude/settings.json 권한·훅 자동 적용
+```
+
+Claude Code가 시작되면 `CLAUDE.md` + `HARNESS_WORKFLOW.md` + 본 문서(`CONTEXT.md`)를 이미 참고할 수 있는 상태이므로, 바로 "[다음 작업 내용]" 형태로 지시하면 된다. 별도의 인수인계 프롬프트가 필요하면 §12 템플릿을 참고하되, 이제는 `CLAUDE.md`/`HARNESS_WORKFLOW.md`를 먼저 읽으라는 문구를 추가하는 것을 권장한다.
+
+### 다음으로 손볼 만한 것 (사람 판단 필요, 자동 진행 금지)
+- `data/agent_state.db` vs `data/alpha_gen.sqlite3` 이중화 해소 방향 결정
+- 루트 `backtest.py`와 `BacktestService`(backend/app/services.py) 중 실제로 쓰는 쪽 확정, 중복이면 정리
+- `README.md`/`workthrough.md`가 CONTEXT.md와 마찬가지로 SQLite 전환 이전(mock_state.json 기준) 서술이 남아있는지 확인 후 필요시 갱신
