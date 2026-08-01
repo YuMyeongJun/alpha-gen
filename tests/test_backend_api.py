@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -458,3 +460,101 @@ def test_db_reset_blocked_when_emergency_stop(tmp_path):
         json={"confirm": True, "reason": "긴급정지 중 reset 시도"},
     )
     assert reset.status_code == 400
+
+
+# ── P3: 세이프티 크리티컬 함수 직접 커버리지 (spec.md 참고) ─────────────────
+
+
+def _fresh_bundle(tmp_path):
+    return build_service_bundle(
+        db_path=str(tmp_path / "alpha_gen.sqlite3"), bootstrap_legacy=False, auto_resume_worker=False
+    )
+
+
+def test_ensure_idempotent_returns_none_when_no_or_unknown_client_order_id(tmp_path):
+    bundle = _fresh_bundle(tmp_path)
+    assert bundle.trading_service._ensure_idempotent(None) is None
+    assert bundle.trading_service._ensure_idempotent("unknown-id") is None
+
+
+def test_create_intent_is_idempotent_by_client_order_id(tmp_path):
+    bundle = _fresh_bundle(tmp_path)
+    kwargs = dict(
+        stock_code="005930",
+        session="KR",
+        side="buy",
+        qty=1,
+        price=70000.0,
+        mode="paper",
+        client_order_id="dup-order-1",
+        metadata=None,
+    )
+
+    first = bundle.trading_service._create_intent(**kwargs)
+    second = bundle.trading_service._create_intent(**kwargs)
+
+    assert first["id"] == second["id"]
+    assert len(bundle.store.list_recent_orders(limit=50)) == 1
+
+    found = bundle.trading_service._ensure_idempotent("dup-order-1")
+    assert found is not None
+    assert found["id"] == first["id"]
+
+
+def test_ensure_signal_freshness_blocks_missing_timestamps(tmp_path):
+    bundle = _fresh_bundle(tmp_path)
+    with pytest.raises(TradingSafetyError):
+        bundle.safety_service.ensure_signal_freshness({})
+
+
+def test_ensure_signal_freshness_blocks_stale_analyzed_at(tmp_path):
+    bundle = _fresh_bundle(tmp_path)
+    stale = (datetime.now(UTC) - timedelta(seconds=config.SIGNAL_STALENESS_SEC + 60)).isoformat()
+    fresh = datetime.now(UTC).isoformat()
+    with pytest.raises(TradingSafetyError):
+        bundle.safety_service.ensure_signal_freshness({"analyzed_at": stale, "quote_collected_at": fresh})
+
+
+def test_ensure_signal_freshness_blocks_stale_quote(tmp_path):
+    bundle = _fresh_bundle(tmp_path)
+    fresh = datetime.now(UTC).isoformat()
+    stale = (datetime.now(UTC) - timedelta(seconds=config.QUOTE_STALENESS_SEC + 60)).isoformat()
+    with pytest.raises(TradingSafetyError):
+        bundle.safety_service.ensure_signal_freshness({"analyzed_at": fresh, "quote_collected_at": stale})
+
+
+def test_ensure_signal_freshness_allows_fresh_timestamps(tmp_path):
+    bundle = _fresh_bundle(tmp_path)
+    now = datetime.now(UTC).isoformat()
+    bundle.safety_service.ensure_signal_freshness({"analyzed_at": now, "quote_collected_at": now})
+
+
+def test_can_trade_reflects_sleep_mode_store_state(tmp_path):
+    bundle = _fresh_bundle(tmp_path)
+    assert bundle.risk_service.can_trade() is True
+
+    bundle.store.set_state("sleep_mode", True)
+    assert bundle.risk_service.can_trade() is False
+
+    bundle.store.set_state("sleep_mode", False)
+    assert bundle.risk_service.can_trade() is True
+
+
+def test_set_emergency_stop_disable_unblocks_orders(tmp_path):
+    client = make_client(tmp_path)
+    client.post("/api/safety/emergency-stop", json={"enabled": True, "reason": "테스트 정지"})
+    blocked = client.post(
+        "/api/orders/paper",
+        json={"stock_code": "005930", "session": "KR", "side": "buy", "qty": 1},
+    )
+    assert blocked.json()["status"] == "rejected"
+
+    off = client.post("/api/safety/emergency-stop", json={"enabled": False, "reason": ""})
+    assert off.status_code == 200
+    assert off.json()["emergency_stop"]["enabled"] is False
+
+    order = client.post(
+        "/api/orders/paper",
+        json={"stock_code": "005930", "session": "KR", "side": "buy", "qty": 1},
+    )
+    assert order.json()["status"] == "filled"
