@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge, Card, PageHeader } from "@/components/common";
+import { Badge, Card, Metric, PageHeader } from "@/components/common";
 import { useDomainLabels } from "@/hooks/useDomainLabels";
 import type { IOrderRes } from "@/models/interface/res/IDashboardRes";
 import { badgeClassByStatus, currency, formatCompactDateTime } from "@/utils/format";
@@ -37,9 +37,51 @@ export const OrdersPanel = ({ orders }: IOrdersPanelProps) => {
   const filtered = useMemo(() => filterOrders(orders, filters), [orders, filters]);
   const activeFilterCount = [filters.status, filters.side, filters.session].filter((v) => v !== "all").length;
 
+  // 상태별 집계 (거부는 안전 관점에서 강조)
+  const filledCount = useMemo(() => orders.filter((o) => orderBadgeTone(o.status) === "green").length, [orders]);
+  const rejectedCount = useMemo(() => orders.filter((o) => orderBadgeTone(o.status) === "red").length, [orders]);
+
   return (
     <>
       <PageHeader title={t("panels.orders.title")} subtitle={t("panels.orders.subtitle")} />
+
+      {/* 요약 지표 */}
+      <div className="grid-4" style={{ marginBottom: 14 }}>
+        <Metric
+          label={t("panels.orders.summaryTotal")}
+          value={orders.length}
+          unit={t("common.countUnit")}
+          sub={<span className="muted">{t("panels.orders.todayCount", { count: todayCount })}</span>}
+        />
+        <Metric
+          label={t("panels.orders.summaryFilled")}
+          value={filledCount}
+          unit={t("common.countUnit")}
+          right={<Badge tone="green" dot>{t("panels.orders.summaryFilled")}</Badge>}
+          sub={<span className="muted">{t("panels.orders.summaryFilledNote")}</span>}
+        />
+        <Metric
+          label={t("panels.orders.summaryRejected")}
+          value={rejectedCount}
+          unit={t("common.countUnit")}
+          right={
+            rejectedCount > 0 ? (
+              <Badge tone="red" dot>{t("panels.orders.summaryRejectedWarn")}</Badge>
+            ) : undefined
+          }
+          sub={
+            <span className="muted">
+              {rejectedCount > 0 ? t("panels.orders.summaryRejected") : t("panels.orders.summaryCleanNote")}
+            </span>
+          }
+        />
+        <Metric
+          label={t("panels.orders.summaryToday")}
+          value={todayCount}
+          unit={t("common.countUnit")}
+          sub={<span className="muted">{t("panels.orders.eyebrow")}</span>}
+        />
+      </div>
 
       <Card
         title={t("panels.orders.cardTitle")}

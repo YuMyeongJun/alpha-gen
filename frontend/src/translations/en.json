@@ -196,7 +196,14 @@
       "colQty": "Qty",
       "colPrice": "Fill price",
       "colStatus": "Status",
-      "colNote": "Note"
+      "colNote": "Note",
+      "summaryTotal": "Total orders",
+      "summaryFilled": "Filled",
+      "summaryRejected": "Rejected",
+      "summaryToday": "Placed today",
+      "summaryRejectedWarn": "Attention",
+      "summaryFilledNote": "Executed",
+      "summaryCleanNote": "No rejects"
     },
     "signals": {
       "title": "Signals",

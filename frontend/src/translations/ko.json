@@ -196,7 +196,14 @@
       "colQty": "수량",
       "colPrice": "체결가",
       "colStatus": "상태",
-      "colNote": "비고"
+      "colNote": "비고",
+      "summaryTotal": "총 주문",
+      "summaryFilled": "체결",
+      "summaryRejected": "거부",
+      "summaryToday": "오늘 발행",
+      "summaryRejectedWarn": "주의",
+      "summaryFilledNote": "정상 체결",
+      "summaryCleanNote": "거부 없음"
     },
     "signals": {
       "title": "시그널",
