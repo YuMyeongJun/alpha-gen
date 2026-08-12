@@ -1,0 +1,74 @@
+{
+  "project_name": "alpha-gen",
+  "knowledge_base_version": "1.0",
+  "last_synced": "2026-08-12",
+  "master_plan": "대시보드(운영 콘솔) UI 전면 고도화 — 8개 메뉴 순차 핸드오프",
+  "current_phase": "PHASE_1 완료 + 폴리시/e2e/PR 완료",
+  "phase_history": {
+    "PHASE_1_ANALYSIS": "완료(2026-08-12) — 스택/구조/툴 싱크 및 blueprint 박제",
+    "PHASE_0_FOUNDATION": "완료(2026-08-12) — 토큰 감사 + 다크모드 구현·실앱(:8010 mock) 검증. e2e Playwright는 별도 핸드오프로 보류"
+  },
+  "stack_summary": {
+    "framework": "Vite 7 + React 18 + TypeScript 5.9",
+    "note": "Next.js / Tailwind 아님. SCSS + CSS 커스텀 프로퍼티 디자인 토큰 사용",
+    "routing": "react-router-dom v7",
+    "data": "@tanstack/react-query v5 + axios (/api → 127.0.0.1:8000 프록시)",
+    "state": "zustand v5 (store/syncStore)",
+    "charts": "echarts v6 + echarts-for-react",
+    "motion": "framer-motion v12",
+    "forms": "react-hook-form + yup",
+    "i18n": "i18next (ko/en)",
+    "styling": "SCSS + design tokens (styles.scss, styles/console.css) — light theme only, no dark mode yet"
+  },
+  "menus": [
+    { "route": "/", "page": "DashboardPage", "panel": "-", "label": "대시보드", "priority": 1 },
+    { "route": "/signals", "page": "SignalsPage", "panel": "SignalsPanel", "label": "시그널", "priority": 2 },
+    { "route": "/orders", "page": "OrdersPage", "panel": "OrdersPanel", "label": "주문", "priority": 3 },
+    { "route": "/portfolio", "page": "PortfolioPage", "panel": "PortfolioPanel", "label": "포트폴리오", "priority": 4 },
+    { "route": "/backtests", "page": "BacktestsPage", "panel": "BacktestsPanel", "label": "백테스트", "priority": 5 },
+    { "route": "/stocks", "page": "StocksPage", "panel": "StocksPanel", "label": "종목", "priority": 6 },
+    { "route": "/audit", "page": "AuditPage", "panel": "AuditPanel", "label": "감사", "priority": 7 },
+    { "route": "/system", "page": "SystemPage", "panel": "SystemPanel", "label": "시스템", "priority": 8 }
+  ],
+  "known_gaps": [
+    "nav 한글 라벨에 'stocks'(종목) 키 누락 — nav 아이템 8개 중 7개만 라벨 존재",
+    "frontend package.json에 lint 스크립트는 있으나 eslint.config 파일 부재",
+    "다크 모드 토큰/테마 미구현",
+    "루트 프로젝트 전반: ruff/black 등 파이썬 린터 설정 파일 부재(CLAUDE.md §7-4)"
+  ],
+  "guardrails": "매매/안전 로직은 절대 건드리지 않음. 이 마스터플랜은 frontend/** 표현 계층 한정. 백엔드 API 필드 의미 변경이 필요하면 backend/app/services.py 제어면 경유 + 사람 승인(CLAUDE.md §4).",
+  "safety_incident": "2026-08-12 — 운영 백엔드가 실거래 무장(promotion_stage=live_limited + .env ALLOW_LIVE_TRADING=true, emergency_stop off). 의도되지 않음. 상세: .claudedata/SAFETY_INCIDENT_2026-08-12.md. UI 작업은 격리 모크 샌드박스(:8010)로만 진행.",
+  "next_action": "8개 메뉴 1차 uplift 완료. 남은 후보: (a) Playwright e2e/ 스캐폴딩+스냅샷 베이스라인, (b) 실데이터 기반 회귀(사용자 백엔드 안전화 후), (c) 반응형/모바일·i18n 누락키 스윕, (d) 백테스트 요약행 실데이터 검증. 검증은 계속 클릭 없이. (사용자: 운영 백엔드 안전화 별건 진행)",
+  "completed_subtasks": [
+    "스택/구조/툴 싱크 및 project_blueprint.md 생성 (2026-08-12)",
+    "지식베이스 구조를 목표 아키텍처로 정렬: .claudedata/{current_status.json, handoff_notes.md, design_tokens/}",
+    "PHASE_0 디자인 토큰 감사 완료 → design_tokens/tokens.json + README.md",
+    "PHASE_0 다크모드 구현 완료: styles.scss 다크 토큰 레이어 + console.css 하드코딩 서피스 토큰화 + ThemeToggle + FOUC 스크립트 + i18n(theme, nav.stocks). yarn build green + Browser MCP 다크 셸 검증 완료",
+    "PHASE_1 대시보드(부분): 차트가 echarts가 아니라 hand-rolled SVG였음(EquityChart/SignalBars). 하드코딩 색(#0f1116 선/축, #E24B4A, #6b6f78, #fff, gridline)을 var(--ink-1/--red-500/--ink-3/--bg/--border)로 토큰화, SignalBars tone도 var 토큰화. yarn build green + :8010 다크 검증(SignalBars 빨강 바 가시). 라이트 무변화.",
+    "PHASE_1 시그널 메뉴 uplift 완료: charts/ScoreMeter.tsx(양극 감성 점수 미터, 중앙0·초록우/빨강좌) 신규 + console.css .score-meter 스타일 + SignalsPanel 점수 컬럼에 적용 + 전일대비 방향 화살표(▲/▼). yarn build green + :8010 다크에서 매수(초록 우)/매도(빨강 좌) 양측 검증 완료.",
+    "PHASE_1 주문 메뉴 uplift 완료: OrdersPanel에 요약 지표 4카드(총 주문/체결/거부/오늘) 추가 — 거부(rejected) 카운트를 안전 관점에서 강조(>0이면 red badge). i18n panels.orders.summary* 키(ko/en). yarn build green + :8010 다크 검증.",
+    "커밋: feature/dashboard-uplift 브랜치 5f313c2 (Phase 0 다크 + Phase 1 대시보드 차트·시그널). 주문은 후속 커밋.",
+    "PHASE_1 포트폴리오 메뉴 uplift 완료: 잠복 다크 버그 6곳 수정 — 미정의 CSS var 폴백(var(--surface-secondary,#f8f9fa)/--amber-bg/--amber/--red/--text)이 다크에서 라이트 박스로 렌더되던 것을 실제 토큰(--bg-subtle/--bg-hover/--amber-50/--amber-500/--red-500/--accent/--ink-1)으로 교체. 주문내역 매수/매도 색이 미정의 class(tone-pos/neg)라 무색이던 것 → positive/negative. yarn build green + :8010 다크 검증(주문 매수 초록 확인).",
+    "PHASE_1 백테스트: 배지 행 → grid-4 요약 지표(총 실행/최근 수익률/평균 승률/최근 거래수)로 교체. i18n panels.backtests.summary*+bullish/bearish. (샌드박스는 runs 0이라 empty state 검증, 코드는 signals/orders 패턴 동일)",
+    "PHASE_1 종목: StocksPanel 필수표시 asterisk의 미정의 var(--red)×2 → var(--red-500). 다크 검증.",
+    "PHASE_1 감사: AuditPanel에 심각도 필터(전체/정보/경고/위험 + 카운트) 추가, .sev-dot CSS(console.css), i18n panels.audit.filter*+emptyFiltered. :8010 다크 검증(전체4/정보4).",
+    "PHASE_1 시스템: 이미 토큰 기반으로 깔끔 — 안전 패널이라 동작 변경 없이 다크만 확인(정상).",
+    "확인: in-app 브라우저 클릭이 mock 샌드박스에서 paper 주문2·기준자본 재설정·emergency_stop clear를 유발했음이 감사로그로 확정됨. 이후 모든 검증은 클릭 없이(colorScheme+navigate+screenshot) 수행. 격리 mock이라 실효 0.",
+    "PR: feature/dashboard-uplift를 origin에 푸시(HEAD 0940015). gh 미설치·토큰 없음 → 자동 생성 불가, compare URL 안내: https://github.com/YuMyeongJun/alpha-gen/compare/main...feature/dashboard-uplift?expand=1",
+    "Playwright e2e 스캐폴딩(fb151e9): frontend/e2e + playwright.config.ts, 8메뉴×light/dark=16 스냅샷 테스트, --list로 수집 검증. 브라우저 설치·실행은 문서화된 사용자 단계.",
+    "폴리시(#3): i18n 스윕 통과(344키 ko/en 패리티 완전, 사용 272키 전부 존재 — 수정 없음). 다크 접근성 대비 전부 통과(측정값 design_tokens/README 기록). 모바일 반응형 드로어(0940015) — 오프캔버스 사이드바+햄버거+스크림, 375px 열림/닫힘 다크 검증.",
+    "e2e 실행: 첫 실행 16개 '실패'는 baseline 부재로 인한 생성(정상). 동기화 시각 마스킹(ecb225e) 후 사용자가 update→통과. baseline 16개 커밋(68d7cc7). 브랜치 총 8커밋, origin 동기화.",
+    "샌드박스 전환: mock(:8010) 종료 → paper 샌드박스(:8010, ui_sandbox_paper.py)로 교체. MOCK_MODE=false·ALPHA_GEN_STAGE=paper·ALLOW_LIVE_TRADING=false·워커 OFF·임시 DB(opsui_paper.sqlite3). /api/safety: stage paper, live_orders false. UI 좌하단 배지 '모의'. 운영 DB·실주문 무관.",
+    "⚠️ e2e baseline 주의: mock 상태 데이터로 캡처됨. 현재 샌드박스는 paper(빈 데이터)라 지금 재실행 시 데이터 페이지 diff 발생. 안정적 e2e엔 고정 fixture/시드 필요(후속)."
+  ],
+  "notes": [
+    "Claude API→Claude Pro 구독 전환 요청은 거절함(자동화 워크로드를 구독으로 돌리는 것은 Anthropic 약관 위반, COST_ZERO_BRIDGE MCP 중계 포함). 합법적 비용절감(Haiku+캐싱/예산상한/플러그블 LLM) 대안 제시, 사용자 선택 대기.",
+    "격리 mock 샌드박스(:8010)에서 emergency_stop이 ui actor로 disabled로 바뀜(14:01:58) — 의도적으로 누른 적 없음, mock이라 무해. 원인 미상, 운영 백엔드에선 이런 방식으로 UI 컨트롤 구동 안 함."
+  ],
+  "verified": {
+    "build": "yarn build (tsc -b && vite build) 통과, 248 modules",
+    "dark_mode": "Browser MCP로 셸 다크 전환·토글 동작 확인 (2026-08-12)",
+    "note": "실데이터 8메뉴 베이스라인은 backend 미기동(/api 500)으로 보류"
+  },
+  "open_decisions": []
+}
