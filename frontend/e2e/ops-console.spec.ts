@@ -27,6 +27,8 @@ for (const route of ROUTES) {
       // 상단 동기화 시각 등 미세 변동 허용
       maxDiffPixelRatio: 0.02,
       animations: "disabled",
+      // 실시간 타임스탬프(동기화 시각)는 마스킹해 재실행 안정화
+      mask: [page.locator(".topbar__sync")],
     });
   });
 }
