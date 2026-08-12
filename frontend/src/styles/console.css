@@ -785,6 +785,19 @@ body { min-width: 0; overflow-x: hidden; }
   text-align: right;
 }
 
+/* severity dot (감사 필터) */
+.sev-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  display: inline-block;
+  margin-right: 5px;
+  flex: none;
+}
+.sev-dot--gray { background: var(--ink-4); }
+.sev-dot--amber { background: var(--amber-500); }
+.sev-dot--red { background: var(--red-500); }
+
 /* Drawdown legend bar */
 .dd-marker {
   background: rgba(226,75,74,0.08);

@@ -297,7 +297,12 @@
       "colTime": "Time",
       "colLevel": "Level",
       "colSource": "Source",
-      "colMessage": "Message"
+      "colMessage": "Message",
+      "emptyFiltered": "No events at this severity.",
+      "filterAll": "All",
+      "filterInfo": "Info",
+      "filterWarning": "Warning",
+      "filterCritical": "Critical"
     },
     "backtests": {
       "title": "Backtests",
@@ -306,6 +311,12 @@
       "recentCount": "Last {{count}} runs",
       "latestReturn": "Latest return {{pct}}",
       "avgWinRate": "Avg win rate {{pct}}%",
+      "summaryRuns": "Total runs",
+      "summaryLatest": "Latest return",
+      "summaryAvgWin": "Avg win rate",
+      "summaryTrades": "Latest trades",
+      "bullish": "Gain",
+      "bearish": "Loss",
       "empty": "No backtest history.",
       "colTime": "Run time",
       "colReturn": "Return",

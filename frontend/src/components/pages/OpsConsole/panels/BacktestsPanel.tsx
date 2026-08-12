@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge, Card, DetailModal, Icon, PageHeader } from "@/components/common";
+import { Badge, Card, DetailModal, Icon, Metric, PageHeader } from "@/components/common";
 import type { IBacktestRunRes } from "@/models/interface/res/IDashboardRes";
 import { currency, formatCompactDateTime, percent, toneClass } from "@/utils/format";
 
@@ -29,12 +29,34 @@ export const BacktestsPanel = ({ runs, onRunBacktest }: IBacktestsPanelProps) =>
       />
 
       {runs.length > 0 && (
-        <div className="row" style={{ gap: 8, marginBottom: 14 }}>
-          <Badge tone="gray">{t("panels.backtests.recentCount", { count: runs.length })}</Badge>
-          <Badge tone={Number(runs[0].summary.total_return_pct) >= 0 ? "green" : "red"} dot>
-            {t("panels.backtests.latestReturn", { pct: percent(runs[0].summary.total_return_pct) })}
-          </Badge>
-          <Badge tone="gray">{t("panels.backtests.avgWinRate", { pct: avgWin.toFixed(0) })}</Badge>
+        <div className="grid-4" style={{ marginBottom: 14 }}>
+          <Metric
+            label={t("panels.backtests.summaryRuns")}
+            value={runs.length}
+            unit={t("common.countUnit")}
+            sub={<span className="muted">{t("panels.backtests.recentCount", { count: runs.length })}</span>}
+          />
+          <Metric
+            label={t("panels.backtests.summaryLatest")}
+            value={percent(runs[0].summary.total_return_pct)}
+            right={
+              <Badge tone={Number(runs[0].summary.total_return_pct) >= 0 ? "green" : "red"} dot>
+                {Number(runs[0].summary.total_return_pct) >= 0
+                  ? t("panels.backtests.bullish")
+                  : t("panels.backtests.bearish")}
+              </Badge>
+            }
+          />
+          <Metric
+            label={t("panels.backtests.summaryAvgWin")}
+            value={`${avgWin.toFixed(0)}%`}
+            sub={<span className="muted">{t("panels.backtests.avgWinRate", { pct: avgWin.toFixed(0) })}</span>}
+          />
+          <Metric
+            label={t("panels.backtests.summaryTrades")}
+            value={runs[0].summary.trade_count}
+            unit={t("common.countUnit")}
+          />
         </div>
       )}
 

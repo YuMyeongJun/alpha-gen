@@ -251,7 +251,7 @@ export const StocksPanel = () => {
             {/* 종목 코드 */}
             <div>
               <label className="label">
-                종목코드 <span style={{ color: "var(--red)" }}>*</span>
+                종목코드 <span style={{ color: "var(--red-500)" }}>*</span>
               </label>
               <input
                 className={`input${errors.code ? " input--error" : ""}`}
@@ -264,7 +264,7 @@ export const StocksPanel = () => {
             {/* 종목명 */}
             <div>
               <label className="label">
-                종목명 <span style={{ color: "var(--red)" }}>*</span>
+                종목명 <span style={{ color: "var(--red-500)" }}>*</span>
               </label>
               <input
                 className={`input${errors.name ? " input--error" : ""}`}
