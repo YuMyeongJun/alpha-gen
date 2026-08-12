@@ -18,7 +18,13 @@
     "orders": "주문",
     "backtests": "백테스트",
     "audit": "감사",
+    "stocks": "종목",
     "system": "시스템"
+  },
+  "theme": {
+    "toggle": "테마 전환",
+    "dark": "다크",
+    "light": "라이트"
   },
   "common": {
     "confirm": "확인",

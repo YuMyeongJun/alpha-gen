@@ -3,7 +3,7 @@ import { Helmet } from "react-helmet-async";
 import { Outlet } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import Skeleton from "react-loading-skeleton";
-import { Badge, Icon, LanguageToggle } from "@/components/common";
+import { Badge, Icon, LanguageToggle, ThemeToggle } from "@/components/common";
 import { OpsConsoleSidebar } from "@/components/pages/OpsConsole/OpsConsoleSidebar";
 import { useDashboardQuery } from "@/hooks/client/dashboard/useDashboardQuery";
 import { useSyncStore } from "@/store/syncStore";
@@ -64,6 +64,7 @@ export const OpsConsoleLayout = () => {
               <span className="topbar__sync">{note}</span>
             </div>
             <div className="topbar__right">
+              <ThemeToggle />
               <LanguageToggle />
               <span className="kbd">⌘K</span>
               <button type="button" className="btn btn--ghost btn--sm" onClick={() => void refetch()}>

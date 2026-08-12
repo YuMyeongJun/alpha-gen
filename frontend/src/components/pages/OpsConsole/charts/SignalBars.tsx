@@ -12,10 +12,10 @@ export interface ISignalBarsProps {
 }
 
 const TONE_COLOR: Record<SignalBarTone, string> = {
-  green: "#639922",
-  red: "#E24B4A",
-  blue: "#378ADD",
-  gray: "#9b9ea6",
+  green: "var(--green-500)",
+  red: "var(--red-500)",
+  blue: "var(--blue-500)",
+  gray: "var(--ink-4)",
 };
 
 export const SignalBars = ({ rows }: ISignalBarsProps) => {

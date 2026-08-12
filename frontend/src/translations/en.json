@@ -18,7 +18,13 @@
     "orders": "Orders",
     "backtests": "Backtests",
     "audit": "Audit",
+    "stocks": "Stocks",
     "system": "System"
+  },
+  "theme": {
+    "toggle": "Toggle theme",
+    "dark": "Dark",
+    "light": "Light"
   },
   "common": {
     "confirm": "Confirm",

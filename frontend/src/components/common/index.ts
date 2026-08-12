@@ -1,4 +1,5 @@
 export { LanguageToggle } from "./LanguageToggle";
+export { ThemeToggle } from "./ThemeToggle";
 export { Badge, type BadgeTone, type IBadgeProps } from "./Badge";
 export { ConfirmDialog, type IConfirmDialogProps } from "./ConfirmDialog";
 export { DetailModal, type IDetailModalProps } from "./DetailModal";

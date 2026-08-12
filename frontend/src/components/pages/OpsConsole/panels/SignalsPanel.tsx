@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge, Card, DetailModal, Metric, PageHeader } from "@/components/common";
+import { ScoreMeter } from "@/components/pages/OpsConsole/charts/ScoreMeter";
 import { useDomainLabels } from "@/hooks/useDomainLabels";
 import type { ISignalRes } from "@/models/interface/res/IDashboardRes";
 import type { SignalVerdict } from "@/utils/domainLabels";
@@ -190,11 +191,12 @@ export const SignalsPanel = ({ signals }: ISignalsPanelProps) => {
                         )}
                       </div>
                     </td>
-                    <td className="num mono">{Number(signal.sentiment_score).toFixed(2)}</td>
+                    <td className="num">
+                      <ScoreMeter score={Number(signal.sentiment_score)} />
+                    </td>
                     <td className="num">{Number(signal.current_price).toLocaleString()}</td>
                     <td className={`num ${changePct >= 0 ? "pos" : "neg"}`}>
-                      {changePct >= 0 ? "+" : ""}
-                      {changePct.toFixed(2)}%
+                      {changePct >= 0 ? "▲" : "▼"} {Math.abs(changePct).toFixed(2)}%
                     </td>
                     <td className="num">
                       {signal.technical_signal ? t("domain.technical.pass") : t("domain.technical.hold")}
