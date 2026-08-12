@@ -709,6 +709,39 @@ body { min-width: 0; overflow-x: hidden; }
   .grid-4 { grid-template-columns: 1fr; }
 }
 
+/* ============================================================
+   Mobile: 오프캔버스 사이드바 드로어
+   ============================================================ */
+.nav-toggle { display: none; }
+.nav-scrim { display: none; }
+
+@media (max-width: 860px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: var(--sidebar-w);
+    max-width: 82vw;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 200ms ease;
+    box-shadow: var(--shadow-pop);
+  }
+  .app[data-nav="open"] .sidebar { transform: translateX(0); }
+  .nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 55;
+    animation: fadein 140ms ease;
+  }
+  .nav-toggle { display: inline-flex; }
+  .content { padding: 20px 16px 32px; overflow-x: auto; }
+  .topbar { padding: 0 14px; gap: 10px; }
+  .topbar__sync { display: none; }
+}
+
 /* Tiny */
 .muted { color: var(--ink-3); }
 .mono { font-family: var(--font-mono); font-size: 12px; }

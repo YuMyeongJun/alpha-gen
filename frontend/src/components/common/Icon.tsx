@@ -16,7 +16,8 @@ export type IconName =
   | "stop"
   | "warn"
   | "sun"
-  | "moon";
+  | "moon"
+  | "menu";
 
 export interface IIconProps {
   name: IconName;
@@ -94,6 +95,7 @@ const PATHS: Record<IconName, ReactNode> = {
     </>
   ),
   moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />,
+  menu: <path d="M4 6h16M4 12h16M4 18h16" />,
 };
 
 export const Icon = ({ name, size = 16, className = "" }: IIconProps) => (
