@@ -39,7 +39,13 @@ export const Foundations = () => {
   const [groups, setGroups] = useState<{ title: string; swatch?: boolean; rows: ITokenRow[] }[]>([]);
 
   useEffect(() => {
-    setGroups(GROUPS.map((g) => ({ title: g.title, swatch: g.swatch, rows: readTokens(g.tokens) })));
+    const read = () => {
+      setGroups(GROUPS.map((g) => ({ title: g.title, swatch: g.swatch, rows: readTokens(g.tokens) })));
+    };
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
   }, []);
 
   return (
