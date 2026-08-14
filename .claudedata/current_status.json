@@ -37,8 +37,9 @@
     "루트 프로젝트 전반: ruff/black 등 파이썬 린터 설정 파일 부재(CLAUDE.md §7-4)"
   ],
   "guardrails": "매매/안전 로직은 절대 건드리지 않음. 이 마스터플랜은 frontend/** 표현 계층 한정. 백엔드 API 필드 의미 변경이 필요하면 backend/app/services.py 제어면 경유 + 사람 승인(CLAUDE.md §4).",
-  "safety_incident": "2026-08-12 — 운영 백엔드가 실거래 무장(promotion_stage=live_limited + .env ALLOW_LIVE_TRADING=true, emergency_stop off). 의도되지 않음. 상세: .claudedata/SAFETY_INCIDENT_2026-08-12.md. UI 작업은 격리 모크 샌드박스(:8010)로만 진행.",
-  "next_action": "8개 메뉴 1차 uplift 완료. 남은 후보: (a) Playwright e2e/ 스캐폴딩+스냅샷 베이스라인, (b) 실데이터 기반 회귀(사용자 백엔드 안전화 후), (c) 반응형/모바일·i18n 누락키 스윕, (d) 백테스트 요약행 실데이터 검증. 검증은 계속 클릭 없이. (사용자: 운영 백엔드 안전화 별건 진행)",
+  "safety_incident": "2026-08-12 — 운영 백엔드가 실거래 무장(promotion_stage=live_limited + .env ALLOW_LIVE_TRADING=true, emergency_stop off). 의도되지 않음. 상세: .claudedata/SAFETY_INCIDENT_2026-08-12.md. UI 작업은 격리 모크 샌드박스(:8010)로만 진행. (2026-08-14 확인: 아직 미해결 — DB promotion_stage=live_limited, emergency_stop.enabled=false 그대로.)",
+  "safety_finding_2026-08-14": "backend/app/main.py 모듈 최상단(L398) `app = create_app()`가 db_path=None(→실제 운영 DB)·auto_resume_worker=True로 무조건 실행됨 — 이 모듈을 import만 해도(예: pytest가 test_backend_api.py에서 `from backend.app.main import create_app` 실행) 운영 DB를 대상으로 서비스 번들이 생성되고, 만약 worker_state.running=true로 남아있었다면 실거래 워커가 자동 재개됐을 것. 실제로는 2026-08-01부터 worker_state.running=false(interrupted)라 이번엔 무해했음을 DB 직접 조회로 확인함. 그러나 이 latent 위험은 안전화 작업 시 함께 고쳐야 함 — 모듈 레벨 부수효과를 제거하거나 최소한 db_path를 lazy/guarded로 바꿀 것. 사람 승인 필요 (CLAUDE.md §4.3, backend/app/main.py는 실거래 관련 코드).",
+  "next_action": "8개 메뉴 1차 uplift 완료. (d) 백테스트 요약행 실데이터 검증 완료(2026-08-14, 아래 참조). 남은 후보: (a) Playwright e2e/ 스캐폴딩+스냅샷 베이스라인, (b) 실데이터 기반 회귀(사용자 백엔드 안전화 후 — 아직 미해결). 검증은 계속 클릭 없이. (사용자: 운영 백엔드 안전화 별건 진행 — 위 safety_finding도 함께 처리 권장)",
   "completed_subtasks": [
     "스택/구조/툴 싱크 및 project_blueprint.md 생성 (2026-08-12)",
     "지식베이스 구조를 목표 아키텍처로 정렬: .claudedata/{current_status.json, handoff_notes.md, design_tokens/}",
@@ -59,7 +60,11 @@
     "폴리시(#3): i18n 스윕 통과(344키 ko/en 패리티 완전, 사용 272키 전부 존재 — 수정 없음). 다크 접근성 대비 전부 통과(측정값 design_tokens/README 기록). 모바일 반응형 드로어(0940015) — 오프캔버스 사이드바+햄버거+스크림, 375px 열림/닫힘 다크 검증.",
     "e2e 실행: 첫 실행 16개 '실패'는 baseline 부재로 인한 생성(정상). 동기화 시각 마스킹(ecb225e) 후 사용자가 update→통과. baseline 16개 커밋(68d7cc7). 브랜치 총 8커밋, origin 동기화.",
     "샌드박스 전환: mock(:8010) 종료 → paper 샌드박스(:8010, ui_sandbox_paper.py)로 교체. MOCK_MODE=false·ALPHA_GEN_STAGE=paper·ALLOW_LIVE_TRADING=false·워커 OFF·임시 DB(opsui_paper.sqlite3). /api/safety: stage paper, live_orders false. UI 좌하단 배지 '모의'. 운영 DB·실주문 무관.",
-    "⚠️ e2e baseline 주의: mock 상태 데이터로 캡처됨. 현재 샌드박스는 paper(빈 데이터)라 지금 재실행 시 데이터 페이지 diff 발생. 안정적 e2e엔 고정 fixture/시드 필요(후속)."
+    "⚠️ e2e baseline 주의: mock 상태 데이터로 캡처됨. 현재 샌드박스는 paper(빈 데이터)라 지금 재실행 시 데이터 페이지 diff 발생. 안정적 e2e엔 고정 fixture/시드 필요(후속).",
+    "2026-08-14: backtest.py 전면 리라이트 — 이전엔 랜덤 합성가격+무조건 +2%청산이라 파라미터 튜닝이 무의미했음. yfinance 실데이터 워크포워드(신호는 진입일 이전 데이터만 사용, 진입 후 hold_days 동안 일별 저가로 손절 감시, 미도달 시 창 종료 종가로 미실현 평가)로 교체. max_position_pct/stop_loss_pct는 함수 인자 override만 가능 — config.MAX_POSITION_PCT/STOP_LOSS_PCT(실거래 리스크 상수)는 절대 안 건드림(테스트로 불변 확인).",
+    "2026-08-14: tests/test_backtest.py(9건) + tests/test_backtest_service.py(5건) 신규 — 이전엔 backtest 엔진·BacktestService 둘 다 테스트 0건이었음. 전체 스위트 79 passed, 3 skipped.",
+    "2026-08-14: 리스크 상수 민감도 스윕(분석 전용, config 미변경) — 실데이터 83종목·30+10일 창에서 baseline(6%/4%) vs 손절폭/포지션크기 변형 비교. 거래 11건뿐(대부분 미실현 평가)이라 표본 작음 — 결론 아님, 참고 자료. config 값 변경 안 함, 사람 승인 필요.",
+    "2026-08-14: (d) 백테스트 요약행 실데이터 검증 완료 — 격리 샌드박스(:8010, temp DB, MOCK_MODE, ALPHA_GEN_DB_PATH override로 운영 DB 완전 회피)에서 실제 backtest 실행 → BacktestsPanel 요약 4카드(총실행/최근수익률/평균승률/최근거래수) + 테이블 행이 실데이터로 정상 렌더 확인(get_page_text, 콘솔 에러 0). 스크린샷/다크모드 시각 확인은 이번 세션 Browser MCP 컴포지팅 문제로 불가 — 후속 필요."
   ],
   "notes": [
     "Claude API→Claude Pro 구독 전환 요청은 거절함(자동화 워크로드를 구독으로 돌리는 것은 Anthropic 약관 위반, COST_ZERO_BRIDGE MCP 중계 포함). 합법적 비용절감(Haiku+캐싱/예산상한/플러그블 LLM) 대안 제시, 사용자 선택 대기.",
