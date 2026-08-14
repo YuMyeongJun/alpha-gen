@@ -37,6 +37,9 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: yarn install --frozen-lockfile
+      - name: Build app
+        working-directory: frontend
+        run: yarn build
       - name: Build Storybook
         working-directory: frontend
         run: yarn build-storybook
