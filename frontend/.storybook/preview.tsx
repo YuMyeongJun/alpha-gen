@@ -1,5 +1,6 @@
 import type { Preview } from "@storybook/react-vite";
 import { useEffect } from "react";
+import { MotionConfig } from "framer-motion";
 import "@/translations/i18n";
 import "@/styles.scss";
 
@@ -8,7 +9,11 @@ const withTheme = (Story: React.ComponentType, context: { globals: { theme?: str
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
-  return <Story />;
+  return (
+    <MotionConfig reducedMotion="user">
+      <Story />
+    </MotionConfig>
+  );
 };
 
 const preview: Preview = {

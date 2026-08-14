@@ -1,5 +1,12 @@
 name: Deploy Storybook to GitHub Pages
 
+# NOTE:
+# - One-time manual setup required: Settings → Pages → Source = "GitHub Actions".
+#   Until that's done, the `deploy` job's actions/deploy-pages@v4 step will 404.
+# - The `branches` trigger below includes `feature/dashboard-uplift` for this
+#   working branch. Prune it back to just `main` once this branch merges, or
+#   this workflow will keep firing on a stale branch name.
+
 on:
   push:
     branches: [main, feature/dashboard-uplift]
