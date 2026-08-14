@@ -6,6 +6,7 @@ export { DetailModal, type IDetailModalProps } from "./DetailModal";
 export { Card, type ICardProps } from "./Card";
 export { Icon, type IconName, type IIconProps } from "./Icon";
 export { Metric, type IMetricProps } from "./Metric";
+export { MetricGrid, type IMetricGridProps } from "./MetricGrid";
 export { PageHeader, type IPageHeaderProps } from "./PageHeader";
 export {
   StagePills,

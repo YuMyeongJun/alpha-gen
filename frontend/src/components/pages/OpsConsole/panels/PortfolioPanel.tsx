@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
-import { Badge, Card, Metric, PageHeader } from "@/components/common";
+import { Badge, Card, Metric, MetricGrid, PageHeader } from "@/components/common";
 import { useSystemMutations } from "@/hooks/client/system/useSystemMutations";
 import type { IDashboardBundleRes } from "@/models/interface/res/IDashboardRes";
 import { buildEquitySeries } from "@/utils/equity";
@@ -162,8 +162,9 @@ export const PortfolioPanel = ({ portfolio }: IPortfolioPanelProps) => {
       )}
 
       {/* 요약 지표 */}
-      <div className="grid-4" style={{ marginBottom: 14 }}>
+      <MetricGrid columns={4}>
         <Metric
+          size="hero"
           label={t("panels.portfolio.evaluated")}
           value={currency(portfolio.total_asset)}
           unit={t("common.currencyUnit")}
@@ -195,7 +196,7 @@ export const PortfolioPanel = ({ portfolio }: IPortfolioPanelProps) => {
             </span>
           }
         />
-      </div>
+      </MetricGrid>
 
       {/* 국내 / 해외 요약 카드 */}
       {allPositions.length > 0 && (

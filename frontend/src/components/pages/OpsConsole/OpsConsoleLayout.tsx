@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Outlet, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import Skeleton from "react-loading-skeleton";
 import { Badge, Icon, LanguageToggle, ThemeToggle } from "@/components/common";
 import { OpsConsoleSidebar } from "@/components/pages/OpsConsole/OpsConsoleSidebar";
@@ -54,7 +55,7 @@ export const OpsConsoleLayout = () => {
   }, [data, error, isError, isFetching, isLoading, isSuccess, setSyncState, t]);
 
   return (
-    <>
+    <MotionConfig reducedMotion="user">
       <Helmet>
         <title>{t("app.title")}</title>
       </Helmet>
@@ -92,11 +93,25 @@ export const OpsConsoleLayout = () => {
           </div>
           <div className="content">
             <div className="content__inner">
-              {data ? <Outlet context={{ data } satisfies IOpsConsoleOutletContext} /> : <Skeleton height={480} />}
+              {data ? (
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={location.pathname}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] as const }}
+                  >
+                    <Outlet context={{ data } satisfies IOpsConsoleOutletContext} />
+                  </motion.div>
+                </AnimatePresence>
+              ) : (
+                <Skeleton height={480} />
+              )}
             </div>
           </div>
         </main>
       </div>
-    </>
+    </MotionConfig>
   );
 };

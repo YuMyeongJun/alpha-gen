@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge, Card, DetailModal, Icon, Metric, PageHeader } from "@/components/common";
+import { Badge, Card, DetailModal, Icon, Metric, MetricGrid, PageHeader } from "@/components/common";
 import type { IBacktestRunRes } from "@/models/interface/res/IDashboardRes";
 import { currency, formatCompactDateTime, percent, toneClass } from "@/utils/format";
 
@@ -29,8 +29,9 @@ export const BacktestsPanel = ({ runs, onRunBacktest }: IBacktestsPanelProps) =>
       />
 
       {runs.length > 0 && (
-        <div className="grid-4" style={{ marginBottom: 14 }}>
+        <MetricGrid columns={4}>
           <Metric
+            size="hero"
             label={t("panels.backtests.summaryRuns")}
             value={runs.length}
             unit={t("common.countUnit")}
@@ -57,7 +58,7 @@ export const BacktestsPanel = ({ runs, onRunBacktest }: IBacktestsPanelProps) =>
             value={runs[0].summary.trade_count}
             unit={t("common.countUnit")}
           />
-        </div>
+        </MetricGrid>
       )}
 
       <Card>

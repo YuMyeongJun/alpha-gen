@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge, Card, DetailModal, Metric, PageHeader } from "@/components/common";
+import { Badge, Card, DetailModal, Metric, MetricGrid, PageHeader } from "@/components/common";
 import { ScoreMeter } from "@/components/pages/OpsConsole/charts/ScoreMeter";
 import { useDomainLabels } from "@/hooks/useDomainLabels";
 import type { ISignalRes } from "@/models/interface/res/IDashboardRes";
@@ -69,8 +69,9 @@ export const SignalsPanel = ({ signals }: ISignalsPanelProps) => {
       <PageHeader title={t("panels.signals.title")} subtitle={t("panels.signals.subtitle")} />
 
       {/* 요약 지표 */}
-      <div className="grid-4" style={{ marginBottom: 14 }}>
+      <MetricGrid columns={4}>
         <Metric
+          size="hero"
           label={t("panels.signals.totalSignals")}
           value={signals.length}
           unit={t("common.countUnit")}
@@ -96,7 +97,7 @@ export const SignalsPanel = ({ signals }: ISignalsPanelProps) => {
           unit={t("common.countUnit")}
           sub={<span className="muted">{labels.signalVerdict("watch")}</span>}
         />
-      </div>
+      </MetricGrid>
 
       {/* 세션 필터 탭 */}
       <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>

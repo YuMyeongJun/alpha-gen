@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { useTranslation } from "react-i18next";
-import { Badge, Card, Metric, PageHeader } from "@/components/common";
+import { Badge, Card, Metric, MetricGrid, PageHeader } from "@/components/common";
 import { EquityChart } from "@/components/pages/OpsConsole/charts/EquityChart";
 import { SignalBars } from "@/components/pages/OpsConsole/charts/SignalBars";
 import { OpsConsoleRail } from "@/components/pages/OpsConsole/OpsConsoleRail";
@@ -79,8 +79,9 @@ export const DashboardPage = () => {
         subtitle={t("panels.dashboard.subtitle")}
       />
 
-      <div className="grid-4" style={{ marginBottom: 14 }}>
+      <MetricGrid columns={4}>
         <Metric
+          size="hero"
           label={t("panels.dashboard.totalAsset")}
           value={currency(portfolio.total_asset)}
           unit={t("common.currencyUnit")}
@@ -147,7 +148,7 @@ export const DashboardPage = () => {
             </>
           }
         />
-      </div>
+      </MetricGrid>
 
       <div className="dash-grid">
         <div className="dash-grid__main">

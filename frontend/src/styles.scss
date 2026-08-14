@@ -70,6 +70,29 @@
   /* Layout */
   --sidebar-w: 248px;
   --topbar-h: 52px;
+
+  /* Type scale — 위계: hero(화면당 1개 핵심 숫자) > lg(섹션 타이틀) > base(본문, 기존 14px) > sm(라벨) */
+  --fs-hero: 34px;
+  --fs-hero-weight: 650;
+  --fs-lg: 16px;
+  --fs-base: 14px;
+  --fs-sm: 12px;
+
+  /* Spacing scale — 4px 배수 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  /* Motion */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 320ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ============================================================

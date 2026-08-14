@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge, Card, Metric, PageHeader } from "@/components/common";
+import { Badge, Card, Metric, MetricGrid, PageHeader } from "@/components/common";
 import { useDomainLabels } from "@/hooks/useDomainLabels";
 import type { IOrderRes } from "@/models/interface/res/IDashboardRes";
 import { badgeClassByStatus, currency, formatCompactDateTime } from "@/utils/format";
@@ -46,8 +46,9 @@ export const OrdersPanel = ({ orders }: IOrdersPanelProps) => {
       <PageHeader title={t("panels.orders.title")} subtitle={t("panels.orders.subtitle")} />
 
       {/* 요약 지표 */}
-      <div className="grid-4" style={{ marginBottom: 14 }}>
+      <MetricGrid columns={4}>
         <Metric
+          size="hero"
           label={t("panels.orders.summaryTotal")}
           value={orders.length}
           unit={t("common.countUnit")}
@@ -81,7 +82,7 @@ export const OrdersPanel = ({ orders }: IOrdersPanelProps) => {
           unit={t("common.countUnit")}
           sub={<span className="muted">{t("panels.orders.eyebrow")}</span>}
         />
-      </div>
+      </MetricGrid>
 
       <Card
         title={t("panels.orders.cardTitle")}
