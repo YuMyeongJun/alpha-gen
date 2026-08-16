@@ -76,12 +76,12 @@ export const EquityChart = ({ data, baseline, width = 720, height = 220 }: IEqui
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }} preserveAspectRatio="xMidYMid meet">
         <defs>
           <linearGradient id="eq-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0f1116" stopOpacity="0.1" />
-            <stop offset="100%" stopColor="#0f1116" stopOpacity="0" />
+            <stop offset="0%" stopColor="var(--ink-1)" stopOpacity="0.1" />
+            <stop offset="100%" stopColor="var(--ink-1)" stopOpacity="0" />
           </linearGradient>
           <linearGradient id="dd-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#E24B4A" stopOpacity="0.16" />
-            <stop offset="100%" stopColor="#E24B4A" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="var(--red-500)" stopOpacity="0.16" />
+            <stop offset="100%" stopColor="var(--red-500)" stopOpacity="0.02" />
           </linearGradient>
         </defs>
 
@@ -100,13 +100,13 @@ export const EquityChart = ({ data, baseline, width = 720, height = 220 }: IEqui
           const yy = y(v);
           return (
             <g key={i}>
-              <line x1={padL} x2={W - padR} y1={yy} y2={yy} stroke="rgba(15,17,22,0.06)" strokeWidth="1" />
+              <line x1={padL} x2={W - padR} y1={yy} y2={yy} stroke="var(--border)" strokeWidth="1" />
               <text
                 x={padL - 6}
                 y={yy + 3.5}
                 textAnchor="end"
                 fontSize="10"
-                fill="#6b6f78"
+                fill="var(--ink-3)"
                 fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
               >
                 {formatKrw(v)}
@@ -120,26 +120,26 @@ export const EquityChart = ({ data, baseline, width = 720, height = 220 }: IEqui
           x2={W - padR}
           y1={y(baseline)}
           y2={y(baseline)}
-          stroke="#6b6f78"
+          stroke="var(--ink-3)"
           strokeDasharray="4 4"
           strokeWidth="1"
         />
-        <text x={W - padR} y={y(baseline) - 6} textAnchor="end" fontSize="10.5" fill="#6b6f78">
+        <text x={W - padR} y={y(baseline) - 6} textAnchor="end" fontSize="10.5" fill="var(--ink-3)">
           {t("chart.baseline")} {formatKrw(baseline)}
         </text>
 
         <path d={areaPath} fill="url(#eq-fill)" />
-        <path d={linePath} stroke="#0f1116" strokeWidth="1.5" fill="none" />
+        <path d={linePath} stroke="var(--ink-1)" strokeWidth="1.5" fill="none" />
 
-        <circle cx={lastX} cy={lastY} r="3.5" fill="#fff" stroke="#0f1116" strokeWidth="1.5" />
+        <circle cx={lastX} cy={lastY} r="3.5" fill="var(--bg)" stroke="var(--ink-1)" strokeWidth="1.5" />
         <g>
-          <rect x={lastX - 56} y={lastY - 28} width="56" height="20" rx="4" fill="#0f1116" />
+          <rect x={lastX - 56} y={lastY - 28} width="56" height="20" rx="4" fill="var(--ink-1)" />
           <text
             x={lastX - 28}
             y={lastY - 14}
             textAnchor="middle"
             fontSize="11"
-            fill="#fff"
+            fill="var(--bg)"
             fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
           >
             {formatKrw(lastV)}
@@ -147,7 +147,7 @@ export const EquityChart = ({ data, baseline, width = 720, height = 220 }: IEqui
         </g>
 
         {xTickIdx.map((i) => (
-          <text key={i} x={x(i)} y={H - 8} textAnchor="middle" fontSize="10.5" fill="#6b6f78">
+          <text key={i} x={x(i)} y={H - 8} textAnchor="middle" fontSize="10.5" fill="var(--ink-3)">
             {data[i].t}
           </text>
         ))}
@@ -155,7 +155,7 @@ export const EquityChart = ({ data, baseline, width = 720, height = 220 }: IEqui
 
       <div className="chart-legend" style={{ marginTop: 4 }}>
         <span>
-          <span className="swatch" style={{ background: "#0f1116" }} />
+          <span className="swatch" style={{ background: "var(--ink-1)" }} />
           {t("chart.totalAsset")}
         </span>
         <span>

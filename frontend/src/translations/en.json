@@ -18,7 +18,13 @@
     "orders": "Orders",
     "backtests": "Backtests",
     "audit": "Audit",
+    "stocks": "Stocks",
     "system": "System"
+  },
+  "theme": {
+    "toggle": "Toggle theme",
+    "dark": "Dark",
+    "light": "Light"
   },
   "common": {
     "confirm": "Confirm",
@@ -190,7 +196,14 @@
       "colQty": "Qty",
       "colPrice": "Fill price",
       "colStatus": "Status",
-      "colNote": "Note"
+      "colNote": "Note",
+      "summaryTotal": "Total orders",
+      "summaryFilled": "Filled",
+      "summaryRejected": "Rejected",
+      "summaryToday": "Placed today",
+      "summaryRejectedWarn": "Attention",
+      "summaryFilledNote": "Executed",
+      "summaryCleanNote": "No rejects"
     },
     "signals": {
       "title": "Signals",
@@ -284,7 +297,12 @@
       "colTime": "Time",
       "colLevel": "Level",
       "colSource": "Source",
-      "colMessage": "Message"
+      "colMessage": "Message",
+      "emptyFiltered": "No events at this severity.",
+      "filterAll": "All",
+      "filterInfo": "Info",
+      "filterWarning": "Warning",
+      "filterCritical": "Critical"
     },
     "backtests": {
       "title": "Backtests",
@@ -293,6 +311,12 @@
       "recentCount": "Last {{count}} runs",
       "latestReturn": "Latest return {{pct}}",
       "avgWinRate": "Avg win rate {{pct}}%",
+      "summaryRuns": "Total runs",
+      "summaryLatest": "Latest return",
+      "summaryAvgWin": "Avg win rate",
+      "summaryTrades": "Latest trades",
+      "bullish": "Gain",
+      "bearish": "Loss",
       "empty": "No backtest history.",
       "colTime": "Run time",
       "colReturn": "Return",

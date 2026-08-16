@@ -18,7 +18,13 @@
     "orders": "주문",
     "backtests": "백테스트",
     "audit": "감사",
+    "stocks": "종목",
     "system": "시스템"
+  },
+  "theme": {
+    "toggle": "테마 전환",
+    "dark": "다크",
+    "light": "라이트"
   },
   "common": {
     "confirm": "확인",
@@ -190,7 +196,14 @@
       "colQty": "수량",
       "colPrice": "체결가",
       "colStatus": "상태",
-      "colNote": "비고"
+      "colNote": "비고",
+      "summaryTotal": "총 주문",
+      "summaryFilled": "체결",
+      "summaryRejected": "거부",
+      "summaryToday": "오늘 발행",
+      "summaryRejectedWarn": "주의",
+      "summaryFilledNote": "정상 체결",
+      "summaryCleanNote": "거부 없음"
     },
     "signals": {
       "title": "시그널",
@@ -284,7 +297,12 @@
       "colTime": "시각",
       "colLevel": "레벨",
       "colSource": "소스",
-      "colMessage": "메시지"
+      "colMessage": "메시지",
+      "emptyFiltered": "해당 심각도의 이벤트가 없습니다.",
+      "filterAll": "전체",
+      "filterInfo": "정보",
+      "filterWarning": "경고",
+      "filterCritical": "위험"
     },
     "backtests": {
       "title": "백테스트",
@@ -293,6 +311,12 @@
       "recentCount": "최근 {{count}}회",
       "latestReturn": "최신 수익률 {{pct}}",
       "avgWinRate": "평균 승률 {{pct}}%",
+      "summaryRuns": "총 실행",
+      "summaryLatest": "최근 수익률",
+      "summaryAvgWin": "평균 승률",
+      "summaryTrades": "최근 거래수",
+      "bullish": "수익",
+      "bearish": "손실",
       "empty": "백테스트 기록이 없습니다.",
       "colTime": "실행 시각",
       "colReturn": "수익률",

@@ -486,6 +486,16 @@ yarn dev
 # http://127.0.0.1:8000
 ```
 
+### Storybook 컴포넌트 쇼케이스
+
+```bash
+cd frontend
+yarn storybook          # 로컬 개발 서버 (http://localhost:6006)
+yarn build-storybook    # 정적 빌드 (frontend/storybook-static/)
+```
+
+`main`/`feature/dashboard-uplift` 브랜치에 push하면 `.github/workflows/storybook-deploy.yml`이 GitHub Pages로 자동 배포합니다.
+
 프론트엔드 개발 스펙(Vite/React/TS 폴더·패키지·컴포넌트 규칙): [`docs/frontend_development.md`](./docs/frontend_development.md)
 
 보조 점검 스크립트:

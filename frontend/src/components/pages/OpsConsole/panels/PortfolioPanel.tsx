@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
-import { Badge, Card, Metric, PageHeader } from "@/components/common";
+import { Badge, Card, Metric, MetricGrid, PageHeader } from "@/components/common";
 import { useSystemMutations } from "@/hooks/client/system/useSystemMutations";
 import type { IDashboardBundleRes } from "@/models/interface/res/IDashboardRes";
 import { buildEquitySeries } from "@/utils/equity";
@@ -141,8 +141,8 @@ export const PortfolioPanel = ({ portfolio }: IPortfolioPanelProps) => {
             justifyContent: "space-between",
             padding: "10px 14px",
             marginBottom: 14,
-            background: "var(--amber-bg, #fff8e1)",
-            border: "1px solid var(--amber, #f59e0b)",
+            background: "var(--amber-50)",
+            border: "1px solid var(--amber-500)",
             borderRadius: 6,
             fontSize: 13,
           }}
@@ -162,8 +162,9 @@ export const PortfolioPanel = ({ portfolio }: IPortfolioPanelProps) => {
       )}
 
       {/* 요약 지표 */}
-      <div className="grid-4" style={{ marginBottom: 14 }}>
+      <MetricGrid columns={4}>
         <Metric
+          size="hero"
           label={t("panels.portfolio.evaluated")}
           value={currency(portfolio.total_asset)}
           unit={t("common.currencyUnit")}
@@ -195,7 +196,7 @@ export const PortfolioPanel = ({ portfolio }: IPortfolioPanelProps) => {
             </span>
           }
         />
-      </div>
+      </MetricGrid>
 
       {/* 국내 / 해외 요약 카드 */}
       {allPositions.length > 0 && (
@@ -282,7 +283,7 @@ export const PortfolioPanel = ({ portfolio }: IPortfolioPanelProps) => {
         {showImport && (
           <div
             style={{
-              background: "var(--surface-secondary, #f8f9fa)",
+              background: "var(--bg-subtle)",
               border: "1px solid var(--border)",
               borderRadius: 6,
               padding: "12px 14px",
@@ -396,7 +397,7 @@ export const PortfolioPanel = ({ portfolio }: IPortfolioPanelProps) => {
                 const isActive =
                   orderTarget?.stock_code === item.stock_code && orderTarget.session === item.session;
                 return (
-                  <tr key={`${item.stock_code}-${item.session}`} style={isActive ? { background: "var(--surface-secondary, #f0f4ff)" } : undefined}>
+                  <tr key={`${item.stock_code}-${item.session}`} style={isActive ? { background: "var(--bg-hover)" } : undefined}>
                     <td>
                       <span style={{ fontWeight: 550 }}>{item.stock_name || item.stock_code}</span>
                     </td>
@@ -492,8 +493,8 @@ export const PortfolioPanel = ({ portfolio }: IPortfolioPanelProps) => {
             style={{
               marginTop: 12,
               padding: "12px 14px",
-              background: "var(--surface-secondary, #f8f9fa)",
-              border: `1px solid ${orderTarget.side === "sell" ? "var(--red, #e55)" : "var(--accent, #4a90e2)"}`,
+              background: "var(--bg-subtle)",
+              border: `1px solid ${orderTarget.side === "sell" ? "var(--red-500)" : "var(--accent)"}`,
               borderRadius: 6,
             }}
           >
@@ -537,7 +538,7 @@ export const PortfolioPanel = ({ portfolio }: IPortfolioPanelProps) => {
               {/* 예상 금액 */}
               <div className="muted" style={{ fontSize: 13 }}>
                 예상 {orderTarget.side === "sell" ? "매도" : "매수"}금액:{" "}
-                <strong style={{ color: "var(--text)" }}>
+                <strong style={{ color: "var(--ink-1)" }}>
                   {orderTarget.session === "US"
                     ? `${toUsd(orderTarget.last_price * orderQty)} (${currency(orderTarget.last_price * orderQty)}원)`
                     : `${currency(orderTarget.last_price * orderQty)}원`}
@@ -586,7 +587,7 @@ export const PortfolioPanel = ({ portfolio }: IPortfolioPanelProps) => {
               {portfolio.orders.slice(0, 20).map((o) => (
                 <tr key={o.id ?? `${o.stock_code}-${o.created_at}`}>
                   <td className="mono">{o.stock_code}</td>
-                  <td className={o.side === "buy" ? "tone-pos" : "tone-neg"}>
+                  <td className={o.side === "buy" ? "positive" : "negative"}>
                     {o.side === "buy" ? "매수" : "매도"}
                   </td>
                   <td>

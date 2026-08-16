@@ -3,6 +3,8 @@
    ============================================================ */
 
 :root {
+  color-scheme: light;
+
   /* Surface */
   --bg: #ffffff;
   --bg-tertiary: #f7f6f2;
@@ -68,9 +70,115 @@
   /* Layout */
   --sidebar-w: 248px;
   --topbar-h: 52px;
+
+  /* Type scale — 위계: hero(화면당 1개 핵심 숫자) > lg(섹션 타이틀) > base(본문, 기존 14px) > sm(라벨) */
+  --fs-hero: 34px;
+  --fs-hero-weight: 650;
+  --fs-lg: 16px;
+  --fs-base: 14px;
+  --fs-sm: 12px;
+
+  /* Spacing scale — 4px 배수 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  /* Motion */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 320ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ============================================================
+   Dark theme (Phase 0 — additive; light values above unchanged)
+   값 근거: .claudedata/design_tokens/tokens.json (dark_proposed)
+   ============================================================ */
+@mixin theme-dark {
+  color-scheme: dark;
+
+  /* Surface */
+  --bg: #16181d;
+  --bg-tertiary: #1c1e24;
+  --bg-subtle: #1a1c21;
+  --bg-hover: #24262d;
+  --bg-input: #1c1e24;
+
+  /* Borders — hairlines */
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-focus: #d0d0d0;
+
+  /* Ink */
+  --ink-1: #f2f3f5;
+  --ink-2: #c4c7cd;
+  --ink-3: #9297a0;
+  --ink-4: #6b6f78;
+
+  /* Semantic — 다크에선 600(텍스트용)을 500보다 밝게, 50/100은 알파 오버레이 */
+  --green-500: #7fb63a;
+  --green-600: #9ccc5a;
+  --green-50: rgba(127, 182, 58, 0.14);
+  --green-100: rgba(127, 182, 58, 0.22);
+
+  --red-500: #f26a69;
+  --red-600: #f58584;
+  --red-50: rgba(226, 75, 74, 0.16);
+  --red-100: rgba(226, 75, 74, 0.24);
+
+  --blue-500: #5aa3e8;
+  --blue-600: #7cb8ef;
+  --blue-50: rgba(55, 138, 221, 0.16);
+  --blue-100: rgba(55, 138, 221, 0.24);
+
+  --amber-500: #e0a63a;
+  --amber-50: rgba(208, 138, 26, 0.18);
+
+  --gray-500: #9297a0;
+  --gray-50: rgba(255, 255, 255, 0.06);
+  --gray-100: rgba(255, 255, 255, 0.1);
+
+  /* Accent */
+  --accent: #d98a5e;
+  --accent-600: #c96f3d;
+  --accent-50: rgba(201, 111, 61, 0.16);
+
+  /* Shadows */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* 사용자가 명시적으로 다크 선택 시 (specificity가 :root보다 높음) */
+:root[data-theme="dark"] {
+  @include theme-dark;
+}
+
+/* 미선택 시 OS 설정을 따르되, 사용자가 라이트를 강제하면 제외 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    @include theme-dark;
+  }
 }
 
 @import "./styles/console.css";
+
+/* react-loading-skeleton — 다크 대응 (기본 CSS는 밝은 회색 고정이라 토큰으로 덮어씀) */
+:root[data-theme="dark"] .react-loading-skeleton {
+  --base-color: #24262d;
+  --highlight-color: #2f323a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .react-loading-skeleton {
+    --base-color: #24262d;
+    --highlight-color: #2f323a;
+  }
+}
 
 .positive,
 .num-pos {
