@@ -443,6 +443,20 @@ CONFIDENCE_SIZING = {
 }
 
 
+# [G-3] Dividend strategy (P7/P12)
+# 주의: DIVIDEND_*_PAYOUT_RATIO는 **라이브 전용**이다. yfinance .info는 '오늘 값'만
+# 주므로 백테스트에서 쓰면 룩어헤드가 된다 (dividends.PAYOUT_IS_LIVE_ONLY 참조).
+DIVIDEND_MAX_PAYOUT_RATIO = _env_float("DIVIDEND_MAX_PAYOUT_RATIO", 0.85)
+DIVIDEND_REIT_MAX_PAYOUT_RATIO = _env_float("DIVIDEND_REIT_MAX_PAYOUT_RATIO", 3.0)
+DIVIDEND_MIN_YIELD_PCT = _env_float("DIVIDEND_MIN_YIELD_PCT", 3.0)
+DIVIDEND_MIN_STREAK_YEARS = _env_int("DIVIDEND_MIN_STREAK_YEARS", 3)
+# 분기배당 1회분(연간의 25%)이 창 경계를 넘나드는 것을 삭감으로 오판하지 않기 위한 허용치.
+# 한국은 2023년 배당절차 개선으로 배당락일이 12월→익년 2~4월로 이동한 사례가 많다.
+DIVIDEND_CUT_TOLERANCE = _env_float("DIVIDEND_CUT_TOLERANCE", 0.30)
+DIVIDEND_TOP_N = _env_int("DIVIDEND_TOP_N", 10)
+DIVIDEND_REBALANCE_DAYS = _env_int("DIVIDEND_REBALANCE_DAYS", 63)   # 분기 ≈ 63 영업일
+
+
 # [H] Market hours
 KR_MARKET_OPEN = os.getenv("KR_MARKET_OPEN", "09:00")
 KR_MARKET_CLOSE = os.getenv("KR_MARKET_CLOSE", "15:30")
