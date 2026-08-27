@@ -29,11 +29,35 @@ def test_stop_loss_triggers():
     assert targets[0]["loss_pct"] <= -4
 
 
+def test_drawdown_limit_matches_approved_policy():
+    """
+    승인된 리스크 한도를 코드에 고정한다.
+
+    이 값 변경은 사람 승인 사항이다 (CLAUDE.md §4.2/§4.3). 이 테스트가 깨지면
+    한도가 조용히 바뀐 것이므로, 테스트 숫자를 맞추기 전에 변경 경위부터 확인해야 한다.
+    2026-08-27 사람이 15% → 30%로 변경·확정 (spec.md "최종 확정" 참조).
+    """
+    assert config.MAX_DRAWDOWN_PCT == 0.30
+    assert config.STOP_LOSS_PCT == 0.04
+    assert config.MAX_POSITION_PCT == 0.06
+
+
 def test_max_drawdown_enters_sleep():
+    """한도를 넘으면 휴면 모드가 켜진다 (한도값은 config에서 유도 — 메커니즘 검증)."""
     risk_manager.set_initial_capital(10_000_000)
-    triggered = risk_manager.check_max_drawdown(8_400_000)  # -16%
+    breach = int(10_000_000 * (1 - config.MAX_DRAWDOWN_PCT) - 1)   # 한도 바로 아래
+    triggered = risk_manager.check_max_drawdown(breach)
     assert triggered is True
     assert risk_manager.SLEEP_MODE is True
+
+
+def test_max_drawdown_does_not_trigger_within_limit():
+    """한도 안쪽에서는 발동하지 않는다 (오탐 방지)."""
+    risk_manager.exit_sleep_mode()
+    risk_manager.set_initial_capital(10_000_000)
+    within = int(10_000_000 * (1 - config.MAX_DRAWDOWN_PCT) + 100_000)
+    assert risk_manager.check_max_drawdown(within) is False
+    assert risk_manager.SLEEP_MODE is False
 
 
 def test_drawdown_pct():

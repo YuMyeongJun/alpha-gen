@@ -432,7 +432,7 @@ ENABLE_VOLATILITY_BREAKOUT = _env_bool("ENABLE_VOLATILITY_BREAKOUT", True)
 TOTAL_CAPITAL = _env_int("TOTAL_CAPITAL", 10_000_000)
 MAX_POSITION_PCT = _env_float("MAX_POSITION_PCT", 0.06)
 STOP_LOSS_PCT = _env_float("STOP_LOSS_PCT", 0.04)
-MAX_DRAWDOWN_PCT = _env_float("MAX_DRAWDOWN_PCT", 0.15)
+MAX_DRAWDOWN_PCT = _env_float("MAX_DRAWDOWN_PCT", 0.30)
 
 CONFIDENCE_SIZING = {
     2: 1.00,
@@ -441,6 +441,29 @@ CONFIDENCE_SIZING = {
     -1: 0.00,
     -2: 0.00,
 }
+
+
+# [G-2] Backtest cost model (P9)
+# 주의: 아래 수수료·세율은 보수적 플레이스홀더다. 사용자가 실제 KIS 계좌 조건과
+# 현행 증권거래세율로 교체하기 전까지 백테스트 결과를 승격 근거로 쓰지 않는다.
+BACKTEST_FEE_BPS_BUY = _env_float("BACKTEST_FEE_BPS_BUY", 1.5)
+BACKTEST_FEE_BPS_SELL = _env_float("BACKTEST_FEE_BPS_SELL", 1.5)
+BACKTEST_TAX_BPS_SELL_KR = _env_float("BACKTEST_TAX_BPS_SELL_KR", 15.0)
+BACKTEST_SLIPPAGE_BPS = _env_float("BACKTEST_SLIPPAGE_BPS", 10.0)
+
+
+# [G-3] Dividend strategy (P7/P12)
+# 주의: DIVIDEND_*_PAYOUT_RATIO는 **라이브 전용**이다. yfinance .info는 '오늘 값'만
+# 주므로 백테스트에서 쓰면 룩어헤드가 된다 (dividends.PAYOUT_IS_LIVE_ONLY 참조).
+DIVIDEND_MAX_PAYOUT_RATIO = _env_float("DIVIDEND_MAX_PAYOUT_RATIO", 0.85)
+DIVIDEND_REIT_MAX_PAYOUT_RATIO = _env_float("DIVIDEND_REIT_MAX_PAYOUT_RATIO", 3.0)
+DIVIDEND_MIN_YIELD_PCT = _env_float("DIVIDEND_MIN_YIELD_PCT", 3.0)
+DIVIDEND_MIN_STREAK_YEARS = _env_int("DIVIDEND_MIN_STREAK_YEARS", 3)
+# 분기배당 1회분(연간의 25%)이 창 경계를 넘나드는 것을 삭감으로 오판하지 않기 위한 허용치.
+# 한국은 2023년 배당절차 개선으로 배당락일이 12월→익년 2~4월로 이동한 사례가 많다.
+DIVIDEND_CUT_TOLERANCE = _env_float("DIVIDEND_CUT_TOLERANCE", 0.30)
+DIVIDEND_TOP_N = _env_int("DIVIDEND_TOP_N", 10)
+DIVIDEND_REBALANCE_DAYS = _env_int("DIVIDEND_REBALANCE_DAYS", 63)   # 분기 ≈ 63 영업일
 
 
 # [H] Market hours
@@ -572,6 +595,13 @@ CLAUDE_COST_PNL_RATIO_ALERT = _env_float("CLAUDE_COST_PNL_RATIO_ALERT", 0.5)
 
 
 # [K] Product/runtime
+# API 인증 (P5). 이 API는 실계좌 주문과 긴급정지 해제를 노출하므로,
+# 루프백 밖으로 바인딩하려면 반드시 토큰이 있어야 한다 (main.ensure_bind_is_safe).
+API_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN", "")
+API_CORS_ORIGINS = os.getenv(
+    "API_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000"
+)
+
 WEB_HOST = os.getenv("ALPHA_GEN_HOST", "127.0.0.1")
 WEB_PORT = _env_int("ALPHA_GEN_PORT", 8000)
 AGENT_INTERVAL_SEC = _env_int("AGENT_INTERVAL_SEC", 60)
