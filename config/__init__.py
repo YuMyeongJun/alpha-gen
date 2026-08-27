@@ -443,6 +443,15 @@ CONFIDENCE_SIZING = {
 }
 
 
+# [G-2] Backtest cost model (P9)
+# 주의: 아래 수수료·세율은 보수적 플레이스홀더다. 사용자가 실제 KIS 계좌 조건과
+# 현행 증권거래세율로 교체하기 전까지 백테스트 결과를 승격 근거로 쓰지 않는다.
+BACKTEST_FEE_BPS_BUY = _env_float("BACKTEST_FEE_BPS_BUY", 1.5)
+BACKTEST_FEE_BPS_SELL = _env_float("BACKTEST_FEE_BPS_SELL", 1.5)
+BACKTEST_TAX_BPS_SELL_KR = _env_float("BACKTEST_TAX_BPS_SELL_KR", 15.0)
+BACKTEST_SLIPPAGE_BPS = _env_float("BACKTEST_SLIPPAGE_BPS", 10.0)
+
+
 # [G-3] Dividend strategy (P7/P12)
 # 주의: DIVIDEND_*_PAYOUT_RATIO는 **라이브 전용**이다. yfinance .info는 '오늘 값'만
 # 주므로 백테스트에서 쓰면 룩어헤드가 된다 (dividends.PAYOUT_IS_LIVE_ONLY 참조).
