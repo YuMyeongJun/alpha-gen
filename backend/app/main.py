@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import secrets
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -26,6 +27,43 @@ from .models import (
 from .services import SystemAdminService, TradingSafetyError, build_service_bundle
 
 
+
+# ── 인증 (P5) ──────────────────────────────────────────────────────────────
+
+AUTH_EXEMPT_PATHS = frozenset({"/api/health", "/api/ready"})
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", ""})
+
+
+def ensure_bind_is_safe(host: str, token: str) -> None:
+    """
+    루프백 밖으로 바인딩하는데 토큰이 없으면 기동을 거부한다.
+
+    이 API는 `/api/orders/manual`(실계좌 주문)과 `/api/safety/emergency-stop`
+    (긴급정지 해제)을 노출한다. 인증 없이 네트워크에 열면 곧바로 자산 탈취 경로다.
+    """
+    if str(host).strip().lower() in _LOOPBACK_HOSTS:
+        return
+    if not token:
+        raise RuntimeError(
+            f"ALPHA_GEN_HOST={host} 는 루프백이 아닙니다. "
+            "API_AUTH_TOKEN 을 설정하지 않으면 기동할 수 없습니다."
+        )
+
+
+async def verify_token(request: Request) -> None:
+    """`API_AUTH_TOKEN`이 설정된 경우에만 강제한다 (미설정 시 기존 동작 유지)."""
+    token = config.API_AUTH_TOKEN
+    if not token:
+        return
+    path = request.url.path
+    if not path.startswith("/api/") or path in AUTH_EXEMPT_PATHS:
+        return
+    header = request.headers.get("Authorization", "")
+    scheme, _, presented = header.partition(" ")
+    if scheme.lower() != "bearer" or not secrets.compare_digest(presented.strip(), token):
+        raise HTTPException(status_code=401, detail="인증이 필요합니다.")
+
+
 def create_app(db_path: str | None = None, bootstrap_legacy: bool = True, auto_resume_worker: bool = True) -> FastAPI:
     bundle = build_service_bundle(db_path=db_path, bootstrap_legacy=bootstrap_legacy, auto_resume_worker=auto_resume_worker)
     store = bundle.store
@@ -40,6 +78,7 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True, auto_r
     system_admin = SystemAdminService(store, safety_service, worker)
 
     app = FastAPI(
+        dependencies=[Depends(verify_token)],
         title="Alpha-Gen Web",
         version="1.0.0",
         description="AI analytics, backtesting, and paper-trading web backend for alpha-gen.",
@@ -47,7 +86,7 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True, auto_r
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=[o.strip() for o in config.API_CORS_ORIGINS.split(",") if o.strip()],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -399,6 +438,7 @@ app = create_app()
 
 
 def main() -> None:
+    ensure_bind_is_safe(config.WEB_HOST, config.API_AUTH_TOKEN)
     uvicorn.run(
         "backend.app.main:app",
         host=config.WEB_HOST,

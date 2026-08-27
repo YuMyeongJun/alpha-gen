@@ -572,6 +572,13 @@ CLAUDE_COST_PNL_RATIO_ALERT = _env_float("CLAUDE_COST_PNL_RATIO_ALERT", 0.5)
 
 
 # [K] Product/runtime
+# API 인증 (P5). 이 API는 실계좌 주문과 긴급정지 해제를 노출하므로,
+# 루프백 밖으로 바인딩하려면 반드시 토큰이 있어야 한다 (main.ensure_bind_is_safe).
+API_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN", "")
+API_CORS_ORIGINS = os.getenv(
+    "API_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000"
+)
+
 WEB_HOST = os.getenv("ALPHA_GEN_HOST", "127.0.0.1")
 WEB_PORT = _env_int("ALPHA_GEN_PORT", 8000)
 AGENT_INTERVAL_SEC = _env_int("AGENT_INTERVAL_SEC", 60)
