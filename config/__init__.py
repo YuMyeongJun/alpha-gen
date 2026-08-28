@@ -466,6 +466,23 @@ DIVIDEND_TOP_N = _env_int("DIVIDEND_TOP_N", 10)
 DIVIDEND_REBALANCE_DAYS = _env_int("DIVIDEND_REBALANCE_DAYS", 63)   # 분기 ≈ 63 영업일
 
 
+# [G-4] 정기 적립 (P15)
+# 확정 배분 (spec.md "최종 확정"): KODEX200 60% / ARIRANG 고배당 25% / 직접선별 15%.
+# 직접선별 15%는 자동화하지 않는다 — 사람이 /api/orders/manual 로 직접 집행한다.
+# 따라서 아래 비중 합은 0.85이며, 나머지 0.15는 현금으로 남는 것이 정상이다.
+#
+# 주의: 이 종목들을 KR_STOCKS에 추가하면 안 된다. KR_STOCKS는 시그널 생성
+# 유니버스이므로, 추가하면 P9에서 폐기된 모멘텀 전략이 ETF까지 매매하게 된다.
+ACCUMULATION_ENABLED = _env_bool("ACCUMULATION_ENABLED", True)
+ACCUMULATION_PLAN = {
+    "069500": {"name": "KODEX 200",       "weight": 0.60, "session": "KR"},
+    "161510": {"name": "ARIRANG 고배당주", "weight": 0.25, "session": "KR"},
+}
+ACCUMULATION_MANUAL_RESERVE_PCT = _env_float("ACCUMULATION_MANUAL_RESERVE_PCT", 0.15)
+ACCUMULATION_MIN_ORDER_KRW = _env_int("ACCUMULATION_MIN_ORDER_KRW", 50_000)
+ACCUMULATION_INTERVAL_SEC = _env_int("ACCUMULATION_INTERVAL_SEC", 86_400)
+
+
 # [H] Market hours
 KR_MARKET_OPEN = os.getenv("KR_MARKET_OPEN", "09:00")
 KR_MARKET_CLOSE = os.getenv("KR_MARKET_CLOSE", "15:30")

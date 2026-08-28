@@ -570,3 +570,21 @@ P6 / P8 (n8n 자동화): 여전히 차단. 다만 검증 결과가 가리키는 
 - [ ] `AgentWorker`에 적립 모드 추가, **기본값을 적립 모드로**
 - [ ] 폐기된 `auto_buy_from_signals()` 경로와 명시적 분리
 - [ ] 직접선별 15%는 자동화하지 않음 — 사람이 `/api/orders/manual`로 수행
+
+---
+
+# P15 완료 ✅ (2026-08-28)
+
+`spec.md` "P15 완료" 참조.
+
+- [x] `AccumulationService` — 목표 비중 부족분만 매수, 매도 없음
+- [x] `AgentWorker.start(mode=)` 기본값 `accumulation`, `signal`은 ValueError + API 422 차단
+- [x] `config.ACCUMULATION_PLAN` 분리 (KR_STOCKS 오염 방지)
+- [x] `POST /api/accumulation/run`, `GET /api/accumulation/plan`
+- [x] 테스트 11건, 실서버 검증 완료
+
+## 남은 것
+
+1. **CLAUDE.md §4.2 `MAX_DRAWDOWN_PCT` 15% → 30%** (사람이 직접 — 에이전트 편집 차단됨)
+2. **KIS ETF 주문 가능 여부 검증** — paper 단계에서 확인 필요. mock으로는 알 수 없다
+3. `.env` 작성 → `scripts/live_mode_checklist.py` → paper 관찰

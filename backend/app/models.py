@@ -20,6 +20,14 @@ class WorkerRequest(BaseModel):
     interval_sec: int = Field(default=60, ge=5, le=3600)
     session: Literal["AUTO", "KR", "US"] = "AUTO"
     place_orders: bool = True
+    mode: Literal["accumulation"] = "accumulation"
+    """`signal` 모드는 P9에서 폐기된 전략이라 스키마에서 제외한다 (spec.md P9/P15)."""
+
+
+class AccumulationRequest(BaseModel):
+    """정기 적립 수동 실행. period 미지정 시 현재 연월(YYYY-MM)을 쓴다."""
+    period: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}$")
+    dry_run: bool = False
 
 
 class PaperOrderRequest(BaseModel):

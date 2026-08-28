@@ -76,6 +76,7 @@ class ServiceBundle:
     backtest_service: "BacktestService"
     diagnostics_service: "DiagnosticsService"
     agent_service: "AgentService"
+    accumulation_service: "AccumulationService"
     worker: "AgentWorker"
 
 
@@ -2039,8 +2040,143 @@ class AgentService:
         }
 
 
+
+class AccumulationService:
+    """
+    정기 적립 실행 (P15).
+
+    확정 배분(spec.md "최종 확정")을 목표 비중으로 삼아 **부족분만 매수**한다.
+    매도하지 않는다 — 청산은 별도 결정 사항이며 이 경로의 책임이 아니다.
+
+    P9에서 폐기된 `TradingService.auto_buy_from_signals()`와 명시적으로 분리된
+    경로다. 단, 안전게이트는 공유한다 — 모든 주문이 기존
+    `place_paper_order`/`place_shadow_order`/`place_live_order`를 경유하므로
+    `SafetyService.ensure_order_allowed()`를 반드시 통과한다 (CLAUDE.md §4.2).
+    """
+
+    def __init__(self, store: SQLiteStore, risk_service: RiskService,
+                 safety_service: SafetyService, trading_service: TradingService) -> None:
+        self.store = store
+        self.risk_service = risk_service
+        self.safety_service = safety_service
+        self.trading_service = trading_service
+
+    @staticmethod
+    def current_period() -> str:
+        return datetime.now(UTC).strftime("%Y-%m")
+
+    def _blocked_reason(self) -> str | None:
+        if not config.ACCUMULATION_ENABLED:
+            return "ACCUMULATION_ENABLED=false 이므로 적립을 실행하지 않습니다."
+        stop = self.safety_service.get_emergency_stop()
+        if stop.get("enabled"):
+            return stop.get("reason") or "긴급 정지 상태입니다."
+        if not self.risk_service.can_trade():
+            return str(self.store.get_state("sleep_reason", "리스크 휴면 모드입니다."))
+        return None
+
+    def plan_targets(self, total_asset: float) -> dict[str, float]:
+        """목표 비중 × 총자산 = 종목별 목표 평가금액."""
+        return {
+            code: total_asset * float(item["weight"])
+            for code, item in config.ACCUMULATION_PLAN.items()
+        }
+
+    def run(self, *, period: str | None = None, dry_run: bool = False) -> dict[str, Any]:
+        period = period or self.current_period()
+        executed: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+
+        blocked = self._blocked_reason()
+        if blocked:
+            self.store.add_audit_event(
+                scope="accumulation", event_type="accumulation_blocked", severity="warning",
+                message=f"적립 차단: {blocked}", payload={"period": period},
+            )
+            return {"period": period, "executed": [], "skipped": [], "blocked": blocked}
+
+        total_asset = self.risk_service.get_total_asset()
+        targets = self.plan_targets(total_asset)
+        mode = self.safety_service.execution_mode()
+
+        for code, target_value in targets.items():
+            item = config.ACCUMULATION_PLAN[code]
+            session = str(item.get("session", "KR"))
+            try:
+                quote = market_data.get_price(code, session)
+                price = float(quote["current_price"])
+            except Exception as exc:
+                skipped.append({"stock_code": code, "reason": f"시세 조회 실패: {exc}"})
+                continue
+            if price <= 0:
+                skipped.append({"stock_code": code, "reason": "시세가 0 이하입니다."})
+                continue
+
+            position = self.store.get_position(session, code)
+            held_value = (float(position["last_price"]) * int(position["qty"])) if position else 0.0
+            shortfall = target_value - held_value
+            if shortfall < config.ACCUMULATION_MIN_ORDER_KRW:
+                skipped.append({"stock_code": code,
+                                "reason": f"부족분 {shortfall:,.0f}원 < 최소주문 "
+                                          f"{config.ACCUMULATION_MIN_ORDER_KRW:,}원"})
+                continue
+
+            qty = int(shortfall // price)
+            if qty <= 0:
+                skipped.append({"stock_code": code, "reason": "매수 수량 0"})
+                continue
+
+            client_order_id = f"accum:{period}:{session}:{code}:buy"
+            metadata = {"source": "accumulation", "period": period,
+                        "target_weight": item["weight"], "plan_name": item.get("name", code)}
+            if dry_run:
+                executed.append({"stock_code": code, "qty": qty, "price": price, "side": "buy",
+                                 "client_order_id": client_order_id, "dry_run": True})
+                continue
+
+            try:
+                if mode == "live":
+                    order = self.trading_service.place_live_order(
+                        stock_code=code, session=session, side="buy", qty=qty,
+                        client_order_id=client_order_id, metadata=metadata)
+                elif mode == "shadow":
+                    order = self.trading_service.place_shadow_order(
+                        stock_code=code, session=session, side="buy", qty=qty,
+                        signal={"stock_code": code, "session": session,
+                                "analyzed_at": utc_timestamp(),
+                                "quote_collected_at": utc_timestamp()},
+                        client_order_id=client_order_id, metadata=metadata)
+                else:
+                    order = self.trading_service.place_paper_order(
+                        stock_code=code, session=session, side="buy", qty=qty,
+                        client_order_id=client_order_id, metadata=metadata)
+            except TradingSafetyError as exc:
+                skipped.append({"stock_code": code, "reason": str(exc)})
+                continue
+            except ValueError as exc:
+                skipped.append({"stock_code": code, "reason": str(exc)})
+                continue
+
+            executed.append({
+                "stock_code": code, "qty": qty, "price": price, "side": "buy",
+                "client_order_id": client_order_id, "mode": mode,
+                "status": order.get("status"), "order_id": order.get("id"),
+            })
+
+        self.store.add_audit_event(
+            scope="accumulation", event_type="accumulation_run", severity="info",
+            message=f"정기 적립 {period}: 체결 {len(executed)}건 / 건너뜀 {len(skipped)}건",
+            payload={"period": period, "mode": mode, "total_asset": total_asset,
+                     "executed": executed, "skipped": skipped},
+        )
+        return {"period": period, "mode": mode, "total_asset": total_asset,
+                "executed": executed, "skipped": skipped, "blocked": None}
+
+
 class AgentWorker:
-    def __init__(self, store: SQLiteStore, agent_service: AgentService) -> None:
+    def __init__(self, store: SQLiteStore, agent_service: AgentService,
+                 accumulation_service: "AccumulationService | None" = None) -> None:
+        self.accumulation_service = accumulation_service
         self.store = store
         self.agent_service = agent_service
         self._thread: threading.Thread | None = None
@@ -2094,7 +2230,22 @@ class AgentWorker:
         )
         return True
 
-    def start(self, *, interval_sec: int, session: str, place_orders: bool) -> dict[str, Any]:
+    def start(self, *, interval_sec: int, session: str, place_orders: bool,
+              mode: str = "accumulation") -> dict[str, Any]:
+        """
+        mode="accumulation"(기본): 확정 배분대로 정기 적립.
+        mode="signal": P9에서 -82.09%로 폐기된 모멘텀 전략. 명시적으로만 실행 가능하며
+                       기본값이 될 수 없다 (spec.md P9/P15 참조).
+        """
+        if mode == "signal":
+            raise ValueError(
+                "signal 모드는 폐기된 전략입니다 (deprecated). "
+                "P9 검증에서 -82.09%로 확인되었습니다. spec.md P9 참조."
+            )
+        if mode != "accumulation":
+            raise ValueError(f"알 수 없는 워커 모드: {mode}")
+        if self.accumulation_service is None:
+            raise RuntimeError("accumulation_service가 주입되지 않았습니다.")
         if self._thread and self._thread.is_alive():
             return self.status()
 
@@ -2108,6 +2259,7 @@ class AgentWorker:
                     "interval_sec": interval_sec,
                     "session": session,
                     "place_orders": place_orders,
+                    "mode": mode,
                     "started_at": utc_timestamp(),
                     "cycle_count": 0,
                     "current_status": "starting",
@@ -2121,14 +2273,19 @@ class AgentWorker:
                     state["current_cycle_started_at"] = utc_timestamp()
                     self.store.set_state("worker_state", state)
 
-                    result = self.agent_service.run_cycle(session=session, place_orders=place_orders)
+                    result = self.accumulation_service.run()
                     state = self.store.get_state("worker_state", {}) or {}
                     state["cycle_count"] = int(state.get("cycle_count", 0)) + 1
                     state["current_status"] = "idle_waiting"
                     state["last_completed_at"] = utc_timestamp()
                     state["next_cycle_at"] = utc_timestamp_after(interval_sec)
                     state["last_error"] = ""
-                    state["last_result"] = result.get("cycle_summary", {})
+                    state["last_result"] = {
+                        "period": result.get("period"),
+                        "executed": len(result.get("executed", [])),
+                        "skipped": len(result.get("skipped", [])),
+                        "blocked": result.get("blocked"),
+                    }
                     self.store.set_state("worker_state", state)
                 except Exception as exc:
                     state = self.store.get_state("worker_state", {}) or {}
@@ -2249,7 +2406,8 @@ def build_service_bundle(
     backtest_service = BacktestService(store)
     diagnostics_service = DiagnosticsService(store, safety_service)
     agent_service = AgentService(store, analytics_service, trading_service, risk_service, safety_service)
-    worker = AgentWorker(store, agent_service)
+    accumulation_service = AccumulationService(store, risk_service, safety_service, trading_service)
+    worker = AgentWorker(store, agent_service, accumulation_service)
     if auto_resume_worker and not safety_service.get_emergency_stop().get("enabled"):
         worker.resume_if_interrupted()
     return ServiceBundle(
@@ -2261,5 +2419,6 @@ def build_service_bundle(
         backtest_service=backtest_service,
         diagnostics_service=diagnostics_service,
         agent_service=agent_service,
+        accumulation_service=accumulation_service,
         worker=worker,
     )

@@ -1176,3 +1176,62 @@ P15 구현 시 **적립 모드와 기존 시그널 모드를 명시적으로 분
 ## 리스크/게이트 파라미터 변경 여부
 
 **없음.**
+
+---
+
+# P15 완료 — ✅ (2026-08-28)
+
+## 구현
+
+**`AccumulationService`** (services.py). 확정 배분을 **목표 비중**으로 삼아 **부족분만 매수**한다.
+
+- 목표: `total_asset × weight`. 보유 평가액과의 차이가 `ACCUMULATION_MIN_ORDER_KRW`(5만원)
+  이상일 때만 매수. **매도하지 않는다** — 청산은 별도 결정이며 이 경로의 책임이 아니다.
+- 경로: `execution_mode()`에 따라 기존 `place_paper_order`/`place_shadow_order`/
+  `place_live_order`를 호출한다. 따라서 `ensure_order_allowed()`를 반드시 통과한다.
+  **신규 우회 경로를 만들지 않았다** (CLAUDE.md §4.2).
+- 멱등 키: `accum:{YYYY-MM}:{session}:{code}:buy`. 이중 방어 —
+  (1) 목표 비중 달성 시 매수 안 함, (2) `order_events.client_order_id` UNIQUE.
+
+## 폐기 전략 차단 (P15의 핵심 목적)
+
+- `AgentWorker.start(mode=...)` 신설. **기본값 `"accumulation"`**.
+- `mode="signal"`은 `ValueError`로 거부하며 메시지에 P9 판정(-82.09%)을 명시한다.
+- `WorkerRequest.mode`를 `Literal["accumulation"]`으로 좁혀 **API 스키마 단계에서 차단**(422).
+- `resume_if_interrupted()`도 기본값을 쓰므로 자동 재개 시에도 적립 모드로 뜬다.
+- `auto_buy_from_signals()` 코드는 **삭제하지 않았다** — 백테스트 하니스와 회귀 테스트가
+  참조하며, 재설계 시 비교 기준으로 필요하다. 호출 경로만 끊었다.
+
+## `config.KR_STOCKS`에 ETF를 추가하지 않은 이유
+
+`market_data.get_target_stocks_for_session()`이 `KR_STOCKS`를 그대로 반환하므로, 여기에
+`069500`/`161510`을 넣으면 **시그널 생성 유니버스에 편입되어 폐기된 모멘텀 전략이 ETF까지
+매매**하게 된다. 별도 상수 `config.ACCUMULATION_PLAN`으로 분리했다.
+
+## 실서버 검증 (mock 모드)
+
+| 항목 | 결과 |
+|---|---|
+| 목표 산출 | 069500 → 6,000,000원(60%) / 161510 → 2,500,000원(25%) |
+| dry_run | 주문 미생성, 계획만 반환 |
+| 실행 | 120주 + 50주, 둘 다 `filled` |
+| 재실행 | **신규 0건** ("부족분 0원 < 최소주문") |
+| `mode="signal"` | **HTTP 422** 차단 |
+| 잔여 현금 | **1,500,000원 = 정확히 15%** (직접선별 몫 보존) |
+
+주의: mock 모드의 50,000원은 `MOCK_SEED_PRICES` 미등록 코드의 폴백값이다. paper/live에서는
+KIS 실시세를 쓴다. **KIS ETF 주문 가능 여부는 여전히 미검증** — paper 단계에서 확인해야 한다.
+
+## 신규 API
+
+- `POST /api/accumulation/run` — `{period?, dry_run?}`
+- `GET /api/accumulation/plan` — 계획·목표금액·실행모드 조회
+
+## 테스트
+
+`tests/test_accumulation.py` 11건. 전체 회귀 `1 failed, 123 passed, 3 skipped`
+(기존 실패 1건은 `.env` 미설정).
+
+## 리스크/게이트 파라미터 변경 여부
+
+**없음.**

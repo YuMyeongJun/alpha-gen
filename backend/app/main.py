@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 import config
 
 from .models import (
+    AccumulationRequest,
     AddStockRequest,
     AdminActionRequest,
     AgentCycleRequest,
@@ -74,6 +75,7 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True, auto_r
     backtest_service = bundle.backtest_service
     diagnostics_service = bundle.diagnostics_service
     agent_service = bundle.agent_service
+    accumulation_service = bundle.accumulation_service
     worker = bundle.worker
     system_admin = SystemAdminService(store, safety_service, worker)
 
@@ -288,11 +290,35 @@ def create_app(db_path: str | None = None, bootstrap_legacy: bool = True, auto_r
 
     @app.post("/api/agent/worker/start")
     async def worker_start(payload: WorkerRequest) -> dict:
-        return worker.start(
-            interval_sec=payload.interval_sec,
-            session=payload.session,
-            place_orders=payload.place_orders,
-        )
+        """워커 기동. 기본이자 유일한 모드는 `accumulation`(정기 적립)이다.
+        폐기된 `signal` 모드(P9, -82.09%)는 스키마에서 차단된다."""
+        try:
+            return worker.start(
+                interval_sec=payload.interval_sec,
+                session=payload.session,
+                place_orders=payload.place_orders,
+                mode=payload.mode,
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/accumulation/run")
+    async def run_accumulation(payload: AccumulationRequest) -> dict:
+        """확정 배분(KODEX200 60% / 고배당ETF 25%)대로 목표 비중 부족분을 매수한다.
+        직접선별 15%는 자동화 대상이 아니며 /api/orders/manual 로 사람이 집행한다."""
+        return accumulation_service.run(period=payload.period, dry_run=payload.dry_run)
+
+    @app.get("/api/accumulation/plan")
+    async def accumulation_plan() -> dict:
+        total_asset = risk_service.get_total_asset()
+        return {
+            "enabled": config.ACCUMULATION_ENABLED,
+            "plan": config.ACCUMULATION_PLAN,
+            "manual_reserve_pct": config.ACCUMULATION_MANUAL_RESERVE_PCT,
+            "total_asset": total_asset,
+            "targets": accumulation_service.plan_targets(total_asset),
+            "execution_mode": safety_service.execution_mode(),
+        }
 
     @app.post("/api/agent/worker/stop")
     async def worker_stop() -> dict:
